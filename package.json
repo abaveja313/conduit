@@ -9,7 +9,7 @@
     "lint": "turbo run lint && cargo fmt --all -- --check || true",
     "test": "turbo run test && cargo test --workspace --quiet || true",
     "e2e": "turbo run e2e",
-    "prepare": "husky install"
+    "prepare": "husky"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",
