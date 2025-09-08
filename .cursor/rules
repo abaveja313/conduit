@@ -1,0 +1,16 @@
+# Conduit Cursor Rules
+- Prefer small, focused modules/functions (≈ ≤60 LOC).
+- Minimal comments: doc comments only for public APIs or non-obvious invariants.
+- No AI disclaimers or chatty narration in code.
+- TS: explicit types on public surfaces; local inference allowed; no `any` without TODO(owner,date).
+- Use schemas from packages/schemas for all RPC payloads.
+- Logging via a thin wrapper; no bare console.log in committed code.
+- Rust: no panics in hot paths; structured errors; clippy -D warnings in CI.
+- WASM façade stays thin—no browser APIs in Rust; pass bytes only.
+- Worker host: long ops must support cancel/progress; enforce caps (files/bytes/matches).
+- Stream results; avoid large in-memory buffers; sandbox to granted directory.
+- Tests: unit (algorithms), E2E (grant, grep, edit, commit); small stable snapshots.
+- Perf budgets: cold start & scan throughput; fail on regressions.
+- Put rationale in DESIGN.md, not inline storytelling.
+- Security: default no network egress; never log file contents/absolute paths in prod logs.
+- PRs: touch a single layer (UI or host or engine) when possible; include perf notes for hot paths.

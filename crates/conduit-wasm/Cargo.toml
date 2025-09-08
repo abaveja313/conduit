@@ -1,0 +1,13 @@
+[package]
+name = "conduit-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+conduit-core = { path = "../conduit-core" }
+conduit-index = { path = "../conduit-index" }
+conduit-vector = { path = "../conduit-vector" }
+wasm-bindgen = "0.2"

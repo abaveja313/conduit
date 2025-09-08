@@ -1,0 +1,16 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "pipeline": {
+    "build:wasm": {
+      "outputs": ["artifacts/wasm/**"]
+    },
+    "build": {
+      "dependsOn": ["^build", "build:wasm"],
+      "outputs": ["dist/**", ".next/**"]
+    },
+    "dev": { "cache": false, "persistent": true },
+    "lint": { "outputs": [] },
+    "test": { "outputs": [] },
+    "e2e": { "cache": false }
+  }
+}

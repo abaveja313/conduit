@@ -1,0 +1,11 @@
+{ "name": "@conduit/worker-host", "version": "0.1.0", "private": true, "type": "module",
+  "main": "dist/index.js", "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -w -p tsconfig.json",
+    "lint": "eslint -c ../../configs/eslint.base.cjs .",
+    "test": "echo \"(add tests)\""
+  },
+  "dependencies": { "zod": "^3.23.8" },
+  "devDependencies": {}
+}
