@@ -1,25 +1,24 @@
 {
     "extends": "../../tsconfig.base.json",
     "compilerOptions": {
-        "outDir": "dist",
+        "outDir": "../mcp-server/dist",
         "declaration": true,
         "declarationMap": true,
         "lib": [
             "ES2022",
-            "DOM",
-            "DOM.Iterable"
+            "WebWorker"
         ],
         "types": [
             "node"
         ]
     },
     "include": [
-        "src/**/*"
+        "../mcp-server/src/**/*"
     ],
     "exclude": [
-        "dist",
-        "node_modules",
-        "**/*.test.ts",
-        "**/*.spec.ts"
+        "../mcp-server/dist",
+        "../mcp-server/node_modules",
+        "../mcp-server/**/*.test.ts",
+        "../mcp-server/**/*.spec.ts"
     ]
 }

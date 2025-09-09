@@ -1,0 +1,27 @@
+{
+  "name": "@conduit/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared utilities for Conduit",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "consola": "^3.4.2",
+    "std-env": "^3.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
+  }
+}

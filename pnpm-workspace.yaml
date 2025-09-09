@@ -1,6 +1,9 @@
 packages:
-  - "apps/*"
-  - "packages/*"
-  - "crates/*"
-  - "tools/*"
-  - "tests/*"
+  - apps/*
+  - packages/*
+  - crates/*
+  - tools/*
+  - tests/*
+
+ignoredBuiltDependencies:
+  - esbuild

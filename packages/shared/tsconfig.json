@@ -3,15 +3,7 @@
     "compilerOptions": {
         "outDir": "dist",
         "declaration": true,
-        "declarationMap": true,
-        "lib": [
-            "ES2022",
-            "DOM",
-            "DOM.Iterable"
-        ],
-        "types": [
-            "node"
-        ]
+        "declarationMap": true
     },
     "include": [
         "src/**/*"
