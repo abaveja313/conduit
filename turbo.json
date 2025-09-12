@@ -1,16 +1,33 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "pipeline": {
+  "tasks": {
     "build:wasm": {
-      "outputs": ["artifacts/wasm/**"]
+      "outputs": [
+        "artifacts/wasm/**"
+      ]
     },
     "build": {
-      "dependsOn": ["^build", "build:wasm"],
-      "outputs": ["dist/**", ".next/**"]
+      "dependsOn": [
+        "^build",
+        "build:wasm"
+      ],
+      "outputs": [
+        "dist/**",
+        ".next/**"
+      ]
     },
-    "dev": { "cache": false, "persistent": true },
-    "lint": { "outputs": [] },
-    "test": { "outputs": [] },
-    "e2e": { "cache": false }
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "outputs": []
+    },
+    "test": {
+      "outputs": []
+    },
+    "e2e": {
+      "cache": false
+    }
   }
 }
