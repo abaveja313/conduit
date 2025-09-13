@@ -13,7 +13,7 @@
     "@conduit/shared": "workspace:*",
     "@mcp-b/transports": "^1.0.3",
     "@modelcontextprotocol/sdk": "^1.17.5",
-    "next": "15.5.2",
+    "next": "15.5.3",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
