@@ -6,7 +6,7 @@ import {
   createErrorFile,
 } from './test-utils/mocks.js';
 import { collectScanResults, runScanWithEvents } from './test-utils/helpers.js';
-import type { ScannerEvents } from '../types.js';
+import type { ScannerEvents, FileMetadata } from '../types.js';
 
 describe('FileScanner - Events', () => {
   beforeEach(() => {
@@ -27,7 +27,7 @@ describe('FileScanner - Events', () => {
         },
       });
 
-      const { files: _files, fileEvents } = await runScanWithEvents(scanner, handle);
+      const { fileEvents } = await runScanWithEvents(scanner, handle);
 
       // Should emit event for each file and directory
       expect(fileEvents).toHaveLength(3); // file1, dir1, file2
@@ -105,14 +105,14 @@ describe('FileScanner - Events', () => {
         },
       });
 
-      const fileEvents: any[] = [];
+      const fileEvents: FileMetadata[] = [];
       const unsubscribe = scanner.on('file', (data) => fileEvents.push(data));
 
       await collectScanResults(scanner, handle);
       unsubscribe();
 
       expect(fileEvents).toHaveLength(1);
-      expect(fileEvents[0]).toEqual({
+      expect(fileEvents[0]).toMatchObject({
         name: 'test.pdf',
         path: 'test.pdf',
         size: 1024,
@@ -202,8 +202,8 @@ describe('FileScanner - Events', () => {
         'file.txt': { name: 'file.txt', size: 100 },
       });
 
-      const listener1Events: any[] = [];
-      const listener2Events: any[] = [];
+      const listener1Events: FileMetadata[] = [];
+      const listener2Events: FileMetadata[] = [];
 
       const unsubscribe1 = scanner.on('file', (data) => listener1Events.push(data));
       const unsubscribe2 = scanner.on('file', (data) => listener2Events.push(data));

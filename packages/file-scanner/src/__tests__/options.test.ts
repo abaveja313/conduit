@@ -6,7 +6,7 @@ import {
   createLargeDirectory,
 } from './test-utils/mocks.js';
 import { collectScanResults, createAbortSignal } from './test-utils/helpers.js';
-import type { ScanOptions } from '../types.js';
+import type { ScanOptions, FileMetadata } from '../types.js';
 
 describe('FileScanner - Options', () => {
   beforeEach(() => {
@@ -299,7 +299,7 @@ describe('FileScanner - Options', () => {
       const handle = createMockFileSystem(createLargeDirectory(100));
 
       const signal = createAbortSignal(10); // Abort after 10ms
-      const results: any[] = [];
+      const results: FileMetadata[] = [];
 
       await expect(async () => {
         for await (const file of scanner.scan(handle, { signal })) {
@@ -322,13 +322,17 @@ describe('FileScanner - Options', () => {
       controller.abort(); // Abort immediately
 
       await expect(async () => {
-        for await (const _ of scanner.scan(handle, { signal: controller.signal })) {
+         
+        for await (const file of scanner.scan(handle, { signal: controller.signal })) {
+          void file; // Suppress unused variable warning
           // Should not reach here
         }
       }).rejects.toThrow(DOMException);
 
       try {
-        for await (const _ of scanner.scan(handle, { signal: controller.signal })) {
+         
+        for await (const file of scanner.scan(handle, { signal: controller.signal })) {
+          void file; // Suppress unused variable warning
           // Should not reach here
         }
       } catch (_error) {
@@ -346,7 +350,7 @@ describe('FileScanner - Options', () => {
       });
 
       const controller = new AbortController();
-      const results: any[] = [];
+      const results: FileMetadata[] = [];
 
       try {
         for await (const file of scanner.scan(handle, { signal: controller.signal })) {
@@ -365,7 +369,7 @@ describe('FileScanner - Options', () => {
   });
 
   describe('Concurrent Mode', () => {
-    it('should activate concurrent scanning when concurrent = true', async () => {
+    it('should activate concurrent scanning when concurrency > 1', async () => {
       const scanner = new FileScanner();
       const handle = createMockFileSystem({
         dir1: {
@@ -381,7 +385,6 @@ describe('FileScanner - Options', () => {
 
       // Run with concurrent mode
       const results = await collectScanResults(scanner, handle, {
-        concurrent: true,
         concurrency: 2,
       });
 
@@ -401,7 +404,6 @@ describe('FileScanner - Options', () => {
       // This is hard to test precisely without mocking internals
       // Just ensure it completes without error
       const results = await collectScanResults(scanner, handle, {
-        concurrent: true,
         concurrency: 2,
       });
 
@@ -424,8 +426,8 @@ describe('FileScanner - Options', () => {
       const handle1 = createMockFileSystem(structure);
       const handle2 = createMockFileSystem(structure);
 
-      const sequential = await collectScanResults(scanner, handle1, { concurrent: false });
-      const concurrent = await collectScanResults(scanner, handle2, { concurrent: true });
+      const sequential = await collectScanResults(scanner, handle1, { concurrency: 1 });
+      const concurrent = await collectScanResults(scanner, handle2, { concurrency: 2 });
 
       // Sort by path for comparison
       const seqPaths = sequential.map((f) => f.path).sort();

@@ -9,6 +9,7 @@ export interface FileMetadata {
     type: 'file' | 'directory';
     lastModified: number;
     mimeType?: string;
+    handle?: FileSystemHandle; // File or directory handle for direct access
 }
 
 export interface ScanOptions {
@@ -20,9 +21,7 @@ export interface ScanOptions {
     includeHidden?: boolean;
     /** Maximum file size in bytes to include (default: Infinity) */
     maxFileSize?: number;
-    /** Enable concurrent processing (default: false) */
-    concurrent?: boolean;
-    /** Maximum concurrent operations (default: 4) */
+    /** Maximum concurrent operations (default: 1) */
     concurrency?: number;
     /** AbortSignal for cancellation */
     signal?: AbortSignal;

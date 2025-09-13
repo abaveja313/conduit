@@ -17,8 +17,7 @@ export class FileScanner {
         maxDepth: Infinity,
         includeHidden: false,
         maxFileSize: Infinity,
-        concurrent: false,
-        concurrency: 4,
+        concurrency: 1,
         signal: new AbortController().signal,
     };
 
@@ -61,7 +60,8 @@ export class FileScanner {
         };
 
         try {
-            if (opts.concurrent && opts.concurrency > 1) {
+            if (opts.concurrency > 1) {
+                logger.info('Using concurrent scanning', { concurrency: opts.concurrency });
                 yield* this.scanConcurrent(rootHandle, opts, shouldExclude, startTime);
             } else {
                 yield* this.scanSequential(
@@ -141,6 +141,7 @@ export class FileScanner {
                         type: 'file',
                         lastModified: file.lastModified,
                         mimeType: file.type || undefined,
+                        handle: handle,
                     };
                 } else if (isDirectoryHandle(handle)) {
                     // Only yield directory metadata if we're going to scan into it
@@ -151,6 +152,7 @@ export class FileScanner {
                             size: 0,
                             type: 'directory',
                             lastModified: Date.now(),
+                            handle: handle,
                         };
                     }
 
