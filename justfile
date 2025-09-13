@@ -22,7 +22,9 @@ audit:
 
 check:
     cargo check --workspace --all-targets
-    pnpm turbo run typecheck
+    # Type checking for TypeScript packages
+    @echo "Checking TypeScript types..."
+    @find . -name "tsconfig.json" -not -path "*/node_modules/*" -not -path "*/.next/*" -not -path "*/dist/*" -execdir sh -c 'echo "Checking $(pwd)..." && npx tsc --noEmit' \;
 
 test:
     cargo test --workspace --locked

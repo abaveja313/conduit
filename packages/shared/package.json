@@ -12,11 +12,14 @@
     }
   },
   "scripts": {
-    "lint": "eslint src",
-    "test": "echo 'No tests yet'"
+    "lint": "eslint src"
   },
   "dependencies": {
     "consola": "^3.4.2",
     "std-env": "^3.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
   }
 }
