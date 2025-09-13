@@ -19,7 +19,7 @@
       "cache": true
     },
     "test": {
-      "outputs": ["coverage/**"],
+      "outputs": [],
       "cache": true
     },
     "e2e": {

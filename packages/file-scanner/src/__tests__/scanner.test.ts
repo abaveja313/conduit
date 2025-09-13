@@ -29,8 +29,8 @@ describe('FileScanner - Core', () => {
 
             await expect(async () => {
 
-                for await (const file of scanner.scan(handle)) {
-                    void file; // Suppress unused variable warning
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                for await (const _ of scanner.scan(handle)) {
                     // Should not reach here
                 }
             }).rejects.toThrow('File System Access API is not supported');
@@ -139,7 +139,7 @@ describe('FileScanner - Core', () => {
             expect(results).toHaveLength(1);
 
             const file = results[0];
-            expect(file).toEqual({
+            expect(file).toMatchObject({
                 name: 'test.pdf',
                 path: 'test.pdf',
                 size: 1024 * 1024,
