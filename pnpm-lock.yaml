@@ -121,8 +121,8 @@ importers:
         specifier: ^3.0.1
         version: 3.0.1
       pathe:
-        specifier: ^1.1.2
-        version: 1.1.2
+        specifier: ^2.0.3
+        version: 2.0.3
       picomatch:
         specifier: ^4.0.2
         version: 4.0.3
@@ -2610,9 +2610,6 @@ packages:
 
   path-to-regexp@8.3.0:
     resolution: {integrity: sha512-7jdwVIRtsP8MYpdXSwOS0YdD0Du+qOoF/AEPIt88PcCFrZCzx41oxku1jD88hZBwbNUIEfpqvuhjFaMAqMTWnA==}
-
-  pathe@1.1.2:
-    resolution: {integrity: sha512-whLdWMYL2TwI08hn8/ZqAbrVemu0LNaNNJZX73O6qaIdCTfXutsLhMkjdENX0qhsQ9uIimo4/aQOmXkoon2nDQ==}
 
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
@@ -5812,8 +5809,6 @@ snapshots:
       minipass: 7.1.2
 
   path-to-regexp@8.3.0: {}
-
-  pathe@1.1.2: {}
 
   pathe@2.0.3: {}
 
