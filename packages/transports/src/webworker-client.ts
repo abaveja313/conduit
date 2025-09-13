@@ -23,10 +23,7 @@ export class WebWorkerClientTransport extends BaseWebWorkerTransport {
     this.setState('connecting');
 
     try {
-      // Set up message listener for worker messages
       this.worker.addEventListener('message', this.handleMessage);
-
-      // Set up error handling
       this.worker.addEventListener('error', this.handleWorkerError);
       this.worker.addEventListener('messageerror', this.handleMessageError);
 
@@ -48,12 +45,10 @@ export class WebWorkerClientTransport extends BaseWebWorkerTransport {
     this.setState('disconnecting');
 
     try {
-      // Remove all event listeners
       this.worker.removeEventListener('message', this.handleMessage);
       this.worker.removeEventListener('error', this.handleWorkerError);
       this.worker.removeEventListener('messageerror', this.handleMessageError);
 
-      // Terminate the worker
       this.worker.terminate();
 
       this.setState('disconnected');
@@ -73,8 +68,6 @@ export class WebWorkerClientTransport extends BaseWebWorkerTransport {
 
     try {
       this.logOutgoingMessage(message);
-
-      // Send message to worker
       this.worker.postMessage(message);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));

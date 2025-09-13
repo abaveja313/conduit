@@ -59,8 +59,6 @@ export class WebWorkerServerTransport extends BaseWebWorkerTransport {
 
     try {
       this.logOutgoingMessage(message);
-
-      // Send message to main thread
       self.postMessage(message);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));

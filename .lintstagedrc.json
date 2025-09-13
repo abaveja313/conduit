@@ -1,4 +1,6 @@
 {
   "*.{ts,tsx,js}": ["eslint --fix"],
-  "*.{md,mdx,json,yml,yaml}": ["prettier --write"]
+  "*.{md,mdx,json,yml,yaml}": ["prettier --write"],
+  "*.rs": ["rustfmt --edition 2021"],
+  "*.toml": ["prettier --write"]
 }

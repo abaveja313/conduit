@@ -16,6 +16,10 @@ fmt:
     cargo fmt --all
     pnpm prettier --write .
 
+# Format only staged files (used by git hooks)
+fmt-staged:
+    npx lint-staged
+
 audit:
     cargo audit
     pnpm audit --audit-level moderate
@@ -61,4 +65,8 @@ update:
     cargo update
     pnpm update --interactive
 
-pre-commit: fmt lint
+# Run formatting and linting on staged files (used by git hooks)
+pre-commit: fmt-staged
+
+# Run full formatting and linting on all files
+pre-commit-all: fmt lint

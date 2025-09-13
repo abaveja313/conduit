@@ -82,10 +82,8 @@ export abstract class BaseWebWorkerTransport extends EventEmitter implements Tra
       to: newState,
     });
 
-    // Generic event for all state changes
     this.emit('state-change', { from: previousState, to: newState });
 
-    // Convenience events for key states
     if (newState === 'connected') {
       this.emit('connected');
     } else if (newState === 'disconnected') {
@@ -95,7 +93,6 @@ export abstract class BaseWebWorkerTransport extends EventEmitter implements Tra
     }
   }
 
-  // Abstract methods that subclasses must implement
   abstract start(): Promise<void>;
   abstract close(): Promise<void>;
   abstract send(message: JSONRPCMessage): Promise<void>;
