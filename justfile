@@ -1,0 +1,62 @@
+default:
+    @just --list
+
+ci: install lint audit test build
+
+install:
+    pnpm install --frozen-lockfile
+    cargo fetch
+
+lint:
+    cargo fmt --all -- --check
+    cargo clippy --all-targets --all-features -- -D warnings
+    pnpm turbo run lint
+
+fmt:
+    cargo fmt --all
+    pnpm prettier --write .
+
+audit:
+    cargo audit
+    pnpm audit --audit-level moderate
+
+check:
+    cargo check --workspace --all-targets
+    pnpm turbo run typecheck
+
+test:
+    cargo test --workspace --locked
+    pnpm turbo run test
+
+build: build-rust build-wasm build-node
+
+build-rust:
+    cargo build --workspace
+
+build-wasm:
+    wasm-pack build crates/conduit-wasm --target web --out-dir ../../packages/wasm/pkg
+
+build-node:
+    pnpm turbo run build
+
+release:
+    cargo builnd --release --workspace
+    wasm-pack build crates/conduit-wasm --target web --out-dir ../../packages/wasm/pkg --release
+    pnpm turbo run build -- --mode production
+
+dev:
+    #!/usr/bin/env bash
+    trap 'kill %1' INT
+    cargo watch -x run &
+    pnpm turbo run dev
+    wait
+
+clean:
+    cargo clean
+    rm -rf .turbo node_modules dist packages/wasm/pkg
+
+update:
+    cargo update
+    pnpm update --interactive
+
+pre-commit: fmt lint

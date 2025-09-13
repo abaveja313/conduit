@@ -1,10 +1,6 @@
 [workspace]
 members = [
   "crates/conduit-core",
-  "crates/conduit-index",
-  "crates/conduit-vector",
-  "crates/conduit-wasm",
-  "crates/conduit-bench",
-  "crates/conduit-fuzz"
+  "crates/conduit-wasm"
 ]
 resolver = "2"

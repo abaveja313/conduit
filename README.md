@@ -8,6 +8,7 @@ Currently focused on secure, zero-install **file access and editing**, Conduit l
 ---
 
 ### Key Features (MVP)
+
 - **Rust-first toolchain** → Write tools in Rust, compile to WASM, run in the browser.
 - **New protocol** → Browser-friendly MCP transport designed for Workers.
 - **File access** → Read/write user-granted directories; atomic writes, optimistic concurrency, undo journal.

@@ -1,28 +1,29 @@
 {
-    "name": "@conduit/transports",
-    "version": "0.1.0",
-    "private": true,
-    "type": "module",
-    "main": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        ".": {
-            "import": "./dist/index.js",
-            "types": "./dist/index.d.ts"
-        }
-    },
-    "scripts": {
-        "build": "tsc -p tsconfig.json",
-        "dev": "tsc -p tsconfig.json --watch",
-        "lint": "eslint -c ../../configs/eslint.base.cjs src --ext .ts",
-        "test": "echo \"(add tests)\""
-    },
-    "dependencies": {
-        "@conduit/shared": "workspace:*",
-        "@modelcontextprotocol/sdk": "^1.17.5"
-    },
-    "devDependencies": {
-        "@types/node": "^22.0.0",
-        "typescript": "^5.0.0"
+  "name": "@conduit/transports",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint src",
+    "test": "echo \"(add tests)\""
+  },
+  "dependencies": {
+    "@conduit/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.17.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "consola": "^3.4.2",
+    "typescript": "^5.0.0"
+  }
 }

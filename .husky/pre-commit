@@ -1,1 +1,2 @@
-pnpm exec lint-staged && cargo fmt --all -- --check || true
+#!/bin/sh
+just pre-commit

@@ -8,6 +8,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 conduit-core = { path = "../conduit-core" }
-conduit-index = { path = "../conduit-index" }
-conduit-vector = { path = "../conduit-vector" }
 wasm-bindgen = "0.2"

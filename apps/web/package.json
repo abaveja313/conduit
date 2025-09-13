@@ -1,5 +1,6 @@
 {
   "name": "web",
+  "type": "module",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -18,12 +19,14 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@next/eslint-plugin-next": "^15.5.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
