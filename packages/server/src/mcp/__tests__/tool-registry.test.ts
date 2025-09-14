@@ -9,7 +9,7 @@ vi.mock('../tools/index', () => ({
 
 import { ToolRegistry } from '../tool-registry';
 
-// Mock types that match the actual interfaces
+// Mock types
 interface MockServer {
     registerTool: ReturnType<typeof vi.fn>;
 }
@@ -44,15 +44,11 @@ describe('ToolRegistry Error Handling', () => {
     });
 
     it('should complete registration successfully when no tools are configured', async () => {
-        // Since tools array is empty, this should complete without issues
         await expect(registry.registerAll(new AbortController().signal)).resolves.not.toThrow();
-
-        // Should not have registered any tools
         expect(mockServer.registerTool).not.toHaveBeenCalled();
     });
 
     it('should build execution context with required WASM modules', async () => {
-        // Test that the registry can build context with WASM modules
         const testTool: ToolDefinition = {
             name: 'wasm-tool',
             description: 'A tool that needs WASM',
@@ -63,34 +59,28 @@ describe('ToolRegistry Error Handling', () => {
             handler: vi.fn().mockResolvedValue({ result: 'success' })
         };
 
-        // Manually register the tool to test context building
         const abortController = new AbortController();
+        const context = {
+            wasm: {} as Record<string, WebAssembly.Instance>,
+            signal: abortController.signal
+        };
 
-        // This should call wasmManager.getModule
-        await expect(async () => {
-            // Simulate what registerTool would do internally
-            const context = {
-                wasm: {},
-                signal: abortController.signal
-            };
-
-            if (testTool.requires?.wasm) {
-                for (const moduleName of testTool.requires.wasm) {
-                    context.wasm[moduleName] = await mockWasmManager.getModule(moduleName);
-                }
+        if (testTool.requires?.wasm) {
+            for (const moduleName of testTool.requires.wasm) {
+                context.wasm[moduleName] = await mockWasmManager.getModule(moduleName);
             }
-        }).not.toThrow();
+        }
 
         expect(mockWasmManager.getModule).toHaveBeenCalledWith('test-module');
+        expect(context.wasm['test-module']).toBeDefined();
     });
 
     it('should establish transport connection without throwing errors', () => {
         const mockTransport: MockTransport = { send: vi.fn() };
 
         expect(() => {
-            // Type assertion needed due to complex Transport interface from MCP SDK
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            registry.connect(mockTransport as any); // Transport from @modelcontextprotocol/sdk has complex internal types
+            registry.connect(mockTransport as any);
         }).not.toThrow();
     });
 });

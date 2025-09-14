@@ -58,7 +58,7 @@ build-node:
     pnpm turbo run build
 
 release:
-    cargo builnd --release --workspace
+    cargo build --release --workspace
     wasm-pack build crates/conduit-wasm --target web --out-dir ../../packages/wasm/pkg --release
     pnpm turbo run build -- --mode production
 
@@ -78,7 +78,7 @@ update:
     pnpm update --interactive
 
 # Run formatting and linting on staged files (used by git hooks)
-pre-commit: fmt-staged
+pre-commit: fmt-staged audit
 
 # Run full formatting and linting on all files
 pre-commit-all: fmt lint

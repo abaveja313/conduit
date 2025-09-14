@@ -2,19 +2,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WASMManager } from '../wasm-manager';
 import { ConduitError, ErrorCodes } from '@conduit/shared';
 
-// Mock fetch
-global.fetch = vi.fn();
+// Mock fetch globally for this test suite
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
 
 describe('WASMManager', () => {
     let manager: WASMManager;
+    let mockWebAssemblyInstantiate: ReturnType<typeof vi.spyOn>;
+
+    const MOCK_BUFFER_SIZE = 8;
+    const createMockInstance = () => ({} as WebAssembly.Instance);
+    const createMockModule = () => ({} as WebAssembly.Module);
 
     beforeEach(() => {
         manager = new WASMManager();
+        mockWebAssemblyInstantiate = vi.spyOn(WebAssembly, 'instantiate');
         vi.clearAllMocks();
     });
 
     afterEach(() => {
         manager.dispose();
+        mockWebAssemblyInstantiate.mockRestore();
     });
 
     describe('validateModuleName', () => {
@@ -68,21 +76,18 @@ describe('WASMManager', () => {
                 'MixedCase123'
             ];
 
-            // Mock successful responses
-            const mockInstance = {} as WebAssembly.Instance;
-            vi.mocked(global.fetch).mockResolvedValue({
+            const mockInstance = createMockInstance();
+            mockFetch.mockResolvedValue({
                 ok: true,
-                arrayBuffer: async () => new ArrayBuffer(8)
+                arrayBuffer: async () => new ArrayBuffer(MOCK_BUFFER_SIZE)
             } as Response);
 
-            // Mock WebAssembly.instantiate
-            vi.spyOn(WebAssembly, 'instantiate').mockResolvedValue({
+            mockWebAssemblyInstantiate.mockResolvedValue({
                 instance: mockInstance,
-                module: {} as WebAssembly.Module
+                module: createMockModule()
             });
 
             for (const name of validNames) {
-                // Should not throw for valid names
                 await expect(manager.getModule(name)).resolves.toBe(mockInstance);
             }
         });
@@ -90,28 +95,28 @@ describe('WASMManager', () => {
 
     describe('loadModule', () => {
         it('should successfully load and cache modules', async () => {
-            const mockInstance = {} as WebAssembly.Instance;
+            const mockInstance = createMockInstance();
 
-            vi.mocked(global.fetch).mockResolvedValue({
+            mockFetch.mockResolvedValue({
                 ok: true,
-                arrayBuffer: async () => new ArrayBuffer(8)
+                arrayBuffer: async () => new ArrayBuffer(MOCK_BUFFER_SIZE)
             } as Response);
 
-            vi.spyOn(WebAssembly, 'instantiate').mockResolvedValue({
+            mockWebAssemblyInstantiate.mockResolvedValue({
                 instance: mockInstance,
-                module: {} as WebAssembly.Module
+                module: createMockModule()
             });
 
             const result1 = await manager.getModule('test-module');
             const result2 = await manager.getModule('test-module');
 
             expect(result1).toBe(mockInstance);
-            expect(result2).toBe(mockInstance); // Should return cached instance
-            expect(fetch).toHaveBeenCalledTimes(1); // Only fetched once
+            expect(result2).toBe(mockInstance);
+            expect(mockFetch).toHaveBeenCalledTimes(1);
         });
 
         it('should handle HTTP fetch failures with appropriate error codes', async () => {
-            vi.mocked(global.fetch).mockResolvedValue({
+            mockFetch.mockResolvedValue({
                 ok: false,
                 statusText: 'Not Found'
             } as Response);
@@ -125,36 +130,32 @@ describe('WASMManager', () => {
 
         it('should wrap network errors in ConduitError with proper context', async () => {
             const networkError = new Error('Network error');
-            vi.mocked(global.fetch).mockRejectedValue(networkError);
+            mockFetch.mockRejectedValue(networkError);
 
-            try {
-                await manager.getModule('test-module');
-                expect.fail('Should have thrown');
-            } catch (error) {
-                expect(error).toBeInstanceOf(ConduitError);
-                expect((error as ConduitError).code).toBe(ErrorCodes.WASM_LOAD_ERROR);
-                expect((error as ConduitError).context).toMatchObject({
+            await expect(manager.getModule('test-module')).rejects.toMatchObject({
+                code: ErrorCodes.WASM_LOAD_ERROR,
+                context: {
                     module: 'test-module',
                     operation: 'load',
                     originalError: 'Error'
-                });
-            }
+                }
+            });
         });
 
         it('should preserve existing ConduitError without double-wrapping', async () => {
             const customError = new ConduitError('Custom error', ErrorCodes.PERMISSION_DENIED);
-            vi.mocked(global.fetch).mockRejectedValue(customError);
+            mockFetch.mockRejectedValue(customError);
 
             await expect(manager.getModule('test-module')).rejects.toThrow(customError);
         });
 
         it('should wrap WebAssembly instantiation failures with context', async () => {
-            vi.mocked(global.fetch).mockResolvedValue({
+            mockFetch.mockResolvedValue({
                 ok: true,
-                arrayBuffer: async () => new ArrayBuffer(8)
+                arrayBuffer: async () => new ArrayBuffer(MOCK_BUFFER_SIZE)
             } as Response);
 
-            vi.spyOn(WebAssembly, 'instantiate').mockRejectedValue(
+            mockWebAssemblyInstantiate.mockRejectedValue(
                 new Error('Invalid WASM module')
             );
 
@@ -171,28 +172,25 @@ describe('WASMManager', () => {
 
     describe('dispose', () => {
         it('should clear all cached modules', async () => {
-            const mockInstance = {} as WebAssembly.Instance;
+            const mockInstance = createMockInstance();
 
-            vi.mocked(global.fetch).mockResolvedValue({
+            mockFetch.mockResolvedValue({
                 ok: true,
-                arrayBuffer: async () => new ArrayBuffer(8)
+                arrayBuffer: async () => new ArrayBuffer(MOCK_BUFFER_SIZE)
             } as Response);
 
-            vi.spyOn(WebAssembly, 'instantiate').mockResolvedValue({
+            mockWebAssemblyInstantiate.mockResolvedValue({
                 instance: mockInstance,
-                module: {} as WebAssembly.Module
+                module: createMockModule()
             });
 
-            // Load some modules
             await manager.getModule('module1');
             await manager.getModule('module2');
 
-            // Dispose
             manager.dispose();
 
-            // Should fetch again after dispose
             await manager.getModule('module1');
-            expect(fetch).toHaveBeenCalledTimes(3); // 2 initial + 1 after dispose
+            expect(mockFetch).toHaveBeenCalledTimes(3);
         });
     });
 });
