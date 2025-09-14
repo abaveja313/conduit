@@ -178,7 +178,7 @@ export class MockFileSystemDirectoryHandle implements FileSystemDirectoryHandle 
     this._entries.delete(name);
   }
 
-  async resolve(_possibleDescendant: FileSystemHandle): Promise<string[] | null> {
+  async resolve(): Promise<string[] | null> {
     return null;
   }
 
@@ -236,13 +236,19 @@ export function createLargeDirectory(fileCount: number, prefix = 'file'): MockDi
  * Mock FileSystem Access API support
  */
 export function mockFileSystemAccessSupport(supported = true): void {
+  const global = globalThis as typeof globalThis & {
+    FileSystemFileHandle?: typeof MockFileSystemFileHandle;
+    FileSystemDirectoryHandle?: typeof MockFileSystemDirectoryHandle;
+    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
+  };
+  
   if (supported) {
-    (globalThis as any).FileSystemFileHandle = MockFileSystemFileHandle;
-    (globalThis as any).FileSystemDirectoryHandle = MockFileSystemDirectoryHandle;
-    (globalThis as any).showDirectoryPicker = async () => createMockFileSystem();
+    global.FileSystemFileHandle = MockFileSystemFileHandle;
+    global.FileSystemDirectoryHandle = MockFileSystemDirectoryHandle;
+    global.showDirectoryPicker = async () => createMockFileSystem();
   } else {
-    delete (globalThis as any).FileSystemFileHandle;
-    delete (globalThis as any).FileSystemDirectoryHandle;
-    delete (globalThis as any).showDirectoryPicker;
+    delete global.FileSystemFileHandle;
+    delete global.FileSystemDirectoryHandle;
+    delete global.showDirectoryPicker;
   }
 }

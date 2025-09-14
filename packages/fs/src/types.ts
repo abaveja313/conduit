@@ -17,15 +17,11 @@ export interface FileMetadata {
 export interface ScanOptions {
   /** Glob patterns to exclude (e.g., ['node_modules/**', '*.log']) */
   exclude?: string[];
-  /** Maximum depth to scan (default: Infinity) */
   maxDepth?: number;
-  /** Include hidden files starting with . (default: false) */
   includeHidden?: boolean;
-  /** Maximum file size in bytes to include (default: Infinity) */
+  /** Skip files larger than this size in bytes */
   maxFileSize?: number;
-  /** Maximum concurrent operations (default: 1) */
   concurrency?: number;
-  /** AbortSignal for cancellation */
   signal?: AbortSignal;
 }
 
