@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FileScanner } from '../scanner.js';
 import {
@@ -18,15 +17,17 @@ describe('FileScanner', () => {
   });
 
   it('should throw when FileSystem API is not supported', async () => {
-    mockFileSystemAccessSupport(false);
+    vi.spyOn(FileScanner, 'isSupported').mockReturnValue(false);
+
     const scanner = new FileScanner();
     const handle = createMockFileSystem();
 
     await expect(async () => {
-      for await (const _file of scanner.scan(handle)) {
-        // Should not reach here
-      }
+      const generator = scanner.scan(handle);
+      await generator.next();
     }).rejects.toThrow('File System Access API is not supported');
+
+    vi.mocked(FileScanner.isSupported).mockRestore();
   });
 
   it('should scan flat directory with files', async () => {
@@ -80,7 +81,6 @@ describe('FileScanner', () => {
     const results = await collectScanResults(scanner, handle);
     const files = results.filter((f) => f.type === 'file');
 
-    // Should continue and get good files despite error
     expect(files).toHaveLength(2);
     expect(files.map((f) => f.name).sort()).toEqual(['good1.txt', 'good2.txt']);
   });
@@ -101,7 +101,6 @@ describe('FileScanner', () => {
     const files = results.filter((f) => f.type === 'file');
 
     expect(files.map((f) => f.path).sort()).toEqual(['level1/file1.txt', 'root.txt']);
-    // Should not include file2.txt from level2
     expect(files.some((f) => f.path.includes('level2'))).toBe(false);
   });
 
@@ -135,7 +134,6 @@ describe('FileScanner', () => {
 
     const controller = new AbortController();
 
-    // Start scan and abort immediately
     const scanPromise = collectScanResults(scanner, handle, { signal: controller.signal });
     controller.abort();
 

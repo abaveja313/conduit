@@ -236,19 +236,20 @@ export function createLargeDirectory(fileCount: number, prefix = 'file'): MockDi
  * Mock FileSystem Access API support
  */
 export function mockFileSystemAccessSupport(supported = true): void {
-  const global = globalThis as typeof globalThis & {
-    FileSystemFileHandle?: typeof MockFileSystemFileHandle;
-    FileSystemDirectoryHandle?: typeof MockFileSystemDirectoryHandle;
-    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
-  };
-  
   if (supported) {
-    global.FileSystemFileHandle = MockFileSystemFileHandle;
-    global.FileSystemDirectoryHandle = MockFileSystemDirectoryHandle;
-    global.showDirectoryPicker = async () => createMockFileSystem();
+    Object.assign(globalThis, {
+      window: {
+        showDirectoryPicker: async () => createMockFileSystem(),
+        FileSystemFileHandle: MockFileSystemFileHandle,
+        FileSystemDirectoryHandle: MockFileSystemDirectoryHandle,
+      },
+      FileSystemFileHandle: MockFileSystemFileHandle,
+      FileSystemDirectoryHandle: MockFileSystemDirectoryHandle,
+      showDirectoryPicker: async () => createMockFileSystem(),
+    });
   } else {
-    delete global.FileSystemFileHandle;
-    delete global.FileSystemDirectoryHandle;
-    delete global.showDirectoryPicker;
+    Object.assign(globalThis, {
+      window: {},
+    });
   }
 }
