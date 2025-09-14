@@ -4,10 +4,19 @@ import { tools } from './tools/index';
 import type { ToolDefinition, ToolContext } from './types';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport';
 import { WASMManager } from './wasm-manager';
-import { ErrorCodes } from './types';
+import { ErrorCodes, isAbortError, createCancelledError, wrapError } from '@conduit/shared';
+
+// Type guard for async iterable
+function isAsyncIterable<T>(obj: unknown): obj is AsyncIterable<T> {
+    return obj !== null &&
+        obj !== undefined &&
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        typeof (obj as any)[Symbol.asyncIterator] === 'function';
+}
 
 export class ToolRegistry {
-    private tools = new Map<string, ToolDefinition>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private tools = new Map<string, ToolDefinition<any, any>>();
     private transport?: Transport;
 
     constructor(
@@ -26,7 +35,8 @@ export class ToolRegistry {
         }
     }
 
-    private registerTool(tool: ToolDefinition, signal: AbortSignal): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private registerTool(tool: ToolDefinition<any, any>, signal: AbortSignal): void {
         this.server.registerTool(
             tool.name,
             {
@@ -40,12 +50,12 @@ export class ToolRegistry {
                     const result = await tool.handler(params, context);
 
                     // Check if result is an async generator
-                    if (result && typeof result[Symbol.asyncIterator] === 'function') {
+                    if (isAsyncIterable(result)) {
                         // For streaming tools, collect all results
-                        const chunks = [];
+                        const chunks: unknown[] = [];
                         for await (const chunk of result) {
                             if (signal.aborted) {
-                                throw new Error('Operation cancelled');
+                                throw createCancelledError({ tool: tool.name, stage: 'streaming' });
                             }
                             chunks.push(chunk);
                         }
@@ -65,17 +75,13 @@ export class ToolRegistry {
                         }]
                     };
                 } catch (error) {
-                    if (signal.aborted || (error instanceof Error && error.message.includes('cancelled'))) {
-                        const err = new Error('Operation cancelled') as Error & { code: number };
-                        err.code = ErrorCodes.CANCELLED;
-                        throw err;
+                    if (signal.aborted || isAbortError(error)) {
+                        throw createCancelledError({ tool: tool.name });
                     }
 
-                    const err = new Error(
-                        `Tool '${tool.name}' failed: ${error instanceof Error ? error.message : String(error)}`
-                    ) as Error & { code: number };
-                    err.code = ErrorCodes.TOOL_EXECUTION_ERROR;
-                    throw err;
+                    throw wrapError(error, ErrorCodes.TOOL_EXECUTION_ERROR, {
+                        tool: tool.name
+                    });
                 }
             }
         );
@@ -121,5 +127,9 @@ export class ToolRegistry {
         }
 
         return context;
+    }
+
+    connect(transport: Transport): void {
+        this.transport = transport;
     }
 }

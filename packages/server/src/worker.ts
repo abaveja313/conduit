@@ -1,6 +1,6 @@
 import { ConduitServer } from './mcp/conduit-server';
 import { WebWorkerServerTransport } from '@conduit/transports';
-import { ErrorCodes } from './mcp/types';
+import { ErrorCodes } from '@conduit/shared';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport';
 
 let server: ConduitServer | null = null;

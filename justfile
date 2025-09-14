@@ -32,7 +32,19 @@ check:
 
 test:
     cargo test --workspace --locked
+    pnpm turbo run test -- --run
+
+test-watch:
+    cargo test --workspace --locked
     pnpm turbo run test
+
+# Run tests for a specific package (e.g., just test-pkg server)
+test-pkg package:
+    cd packages/{{package}} && npm test -- --run
+
+# Run tests for a specific package in watch mode
+test-pkg-watch package:
+    cd packages/{{package}} && npm test
 
 build: build-rust build-wasm build-node
 

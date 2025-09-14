@@ -18,6 +18,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@conduit/shared": "workspace:*",
     "@conduit/transports": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.18.0",
     "zod": "^3.23.8"

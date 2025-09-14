@@ -1,7 +1,6 @@
-import type { ToolDefinition } from '../types';
 import echoTool from './echo.tool';
 
-export const tools: ToolDefinition[] = [
+export const tools = [
     echoTool,
     // Add other tools here as they are created
 ].sort((a, b) => a.name.localeCompare(b.name));

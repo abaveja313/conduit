@@ -1,4 +1,4 @@
-import { ErrorCodes, ConduitError } from './types';
+import { ErrorCodes, ConduitError, wrapError } from '@conduit/shared';
 
 export class WASMManager {
     private modules = new Map<string, WebAssembly.Instance>();
@@ -53,10 +53,10 @@ export class WASMManager {
         } catch (error) {
             if (error instanceof ConduitError) throw error;
 
-            throw new ConduitError(
-                `Failed to load WASM module ${name}: ${error instanceof Error ? error.message : String(error)}`,
-                ErrorCodes.WASM_LOAD_ERROR
-            );
+            throw wrapError(error, ErrorCodes.WASM_LOAD_ERROR, {
+                module: name,
+                operation: 'load'
+            });
         }
     }
 

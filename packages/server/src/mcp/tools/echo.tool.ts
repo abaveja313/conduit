@@ -6,10 +6,13 @@ const inputSchema = z.object({
     repeat: z.number().min(1).max(10).default(1).describe('Number of times to repeat')
 });
 
-const echoTool: ToolDefinition = {
+type EchoParams = { message: string; repeat: number };
+type EchoResult = { echoed: string; count: number };
+
+const echoTool: ToolDefinition<EchoParams, EchoResult> = {
     name: 'echo',
     description: 'Simple echo tool for testing',
-    inputSchema,
+    inputSchema: inputSchema as z.ZodSchema<EchoParams>,
 
     capabilities: {
         progressive: true
