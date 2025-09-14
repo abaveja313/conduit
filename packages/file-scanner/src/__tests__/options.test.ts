@@ -322,7 +322,6 @@ describe('FileScanner - Options', () => {
       controller.abort(); // Abort immediately
 
       await expect(async () => {
-         
         for await (const file of scanner.scan(handle, { signal: controller.signal })) {
           void file; // Suppress unused variable warning
           // Should not reach here
@@ -330,7 +329,6 @@ describe('FileScanner - Options', () => {
       }).rejects.toThrow(DOMException);
 
       try {
-         
         for await (const file of scanner.scan(handle, { signal: controller.signal })) {
           void file; // Suppress unused variable warning
           // Should not reach here
