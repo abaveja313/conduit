@@ -1,0 +1,85 @@
+# EditorConfig helps maintain consistent coding styles across different editors and IDEs
+# editorconfig.org
+
+# Top-most EditorConfig file
+root = true
+
+# Default settings for all files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# TypeScript and JavaScript files
+[*.{ts,tsx,js,jsx,mjs,cjs}]
+indent_size = 2
+quote_type = single
+
+# JSON files
+[*.json]
+indent_size = 2
+
+# YAML files
+[*.{yml,yaml}]
+indent_size = 2
+
+# Rust files
+[*.rs]
+indent_size = 4
+
+# Cargo configuration
+[Cargo.toml]
+indent_size = 4
+
+# Markdown files
+[*.md]
+# Trailing whitespace can be meaningful in Markdown (for line breaks)
+trim_trailing_whitespace = false
+max_line_length = 80
+
+# HTML files
+[*.html]
+indent_size = 2
+
+# CSS and related files
+[*.{css,scss,sass,less}]
+indent_size = 2
+
+# Shell scripts
+[*.sh]
+indent_size = 2
+
+# Makefiles require tabs
+[Makefile]
+indent_style = tab
+
+# Justfile (similar to Makefile)
+[justfile]
+indent_style = tab
+
+# Git configuration files
+[.git*]
+indent_size = 2
+
+# Package manager files
+[{package.json,pnpm-lock.yaml}]
+indent_size = 2
+
+# Configuration files
+[*.config.{js,ts,mjs,cjs}]
+indent_size = 2
+
+# Test files
+[*.{test,spec}.{js,ts,jsx,tsx}]
+indent_size = 2
+
+# Build output directories (exclude from formatting)
+[{dist/**,build/**,target/**,node_modules/**}]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_style = unset
