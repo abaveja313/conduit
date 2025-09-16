@@ -1,48 +1,100 @@
-use std::collections::{BTreeSet, HashMap};
-use std::sync::Arc;
+use im::{HashMap as IHashMap, OrdSet as IOrdSet};
+use std::{
+    ops::Bound::{Included, Unbounded},
+    sync::Arc,
+};
 
-use camino::{Utf8Path, Utf8PathBuf};
+use crate::path::PathKey;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileEntry {
     ext: String,
     size: u64,
-    mtime: i64,
+    mtime: i64, // unix epoch
     bytes: Option<Arc<[u8]>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Index {
-    // exact lookups
-    files: HashMap<Utf8PathBuf, Arc<FileEntry>>,
+    // exact lookups - use immutable for structural sharing
+    files: IHashMap<PathKey, FileEntry>,
     // sorted paths for prefix/range queries
-    prefixes: BTreeSet<Utf8PathBuf>,
+    prefixes: IOrdSet<PathKey>,
+}
+
+impl FileEntry {
+    /// Metadata-only constructor (no bytes)
+    pub fn new(ext: impl Into<String>, size: u64, mtime: i64) -> Self {
+        Self {
+            ext: ext.into(),
+            size,
+            mtime,
+            bytes: None,
+        }
+    }
+
+    /// Bytes-present constructor; size is computed from bytes to avoid mismatch
+    pub fn from_bytes(ext: impl Into<String>, mtime: i64, bytes: Arc<[u8]>) -> Self {
+        let size = bytes.len() as u64;
+        Self {
+            ext: ext.into(),
+            size,
+            mtime,
+            bytes: Some(bytes),
+        }
+    }
+
+    /// Update/replace bytes; optionally bump mtime
+    pub fn update_bytes(&mut self, bytes: Arc<[u8]>, new_mtime: Option<i64>) {
+        self.size = bytes.len() as u64;
+        self.bytes = Some(bytes);
+        if let Some(t) = new_mtime {
+            self.mtime = t;
+        }
+    }
+
+    /// Drop in-memory bytes if you want to keep metadata only
+    pub fn clear_bytes(&mut self) {
+        self.bytes = None;
+    }
+
+    /// Borrow the bytes without cloning the Arc
+    pub fn bytes(&self) -> Option<&[u8]> {
+        self.bytes.as_deref()
+    }
 }
 
 impl Index {
-    pub fn get_entries_by_prefix(&self, prefix: &Utf8Path) -> Vec<Utf8PathBuf> {
-        let mut entries = Vec::new();
-        let start = prefix.to_path_buf();
-
-        for p in self.prefixes.range(start..) {
-            if !p.starts_with(prefix) {
-                // abort when we reach the end of range
-                break;
-            }
-
-            entries.push(p.to_path_buf());
-        }
-        entries
+    /// Get a file entry by path key
+    pub fn get_file(&self, key: PathKey) -> Option<&FileEntry> {
+        self.files.get(&key)
     }
 
-    pub fn get_file(&self, path: &Utf8Path) -> Option<Arc<FileEntry>> {
-        self.files.get(path).cloned()
+    /// Upsert a file entry by path key
+    pub fn upsert_file(&mut self, key: PathKey, entry: FileEntry) {
+        self.files.insert(key, entry);
+        self.prefixes.insert(key);
     }
 
-    pub(crate) fn clone_shallow(&self) -> Self {
-        Self {
-            files: self.files.clone(),
-            prefixes: self.prefixes.clone(),
+    /// Remove a file by path key, if it exists
+    pub fn remove_file(&mut self, key: PathKey) -> bool {
+        let existed = self.files.remove(&key).is_some();
+        if existed {
+            self.prefixes.remove(&key);
         }
+        existed
+    }
+
+    /// Get all entries that have a path starting with the specified prefix
+    ///
+    /// Used to implement `ls`-like operations. Uses a simple sequential
+    /// scan and
+    pub fn paths_by_prefix(&self, prefix: PathKey) -> Vec<PathKey> {
+        // early terminate when we exit the prefix range
+        self.prefixes
+            .range((Included(prefix), Unbounded))
+            .take_while(|p| p.as_str().starts_with(prefix.as_str()))
+            .copied()
+            .collect()
     }
 }

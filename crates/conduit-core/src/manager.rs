@@ -1,58 +1,77 @@
+use arc_swap::ArcSwap;
+use once_cell::sync::Lazy;
+use parking_lot::Mutex; // only guards staging state
+use std::path::Path;
 use std::sync::Arc;
 
-use once_cell::sync::Lazy;
-use parking_lot::RwLock;
-
 use crate::error::{Error, Result};
-use crate::index::Index;
+use crate::index::{FileEntry, Index};
+use crate::path::PathKey;
 
-#[derive(Debug, Default)]
-struct IndexManager {
-    current: Arc<Index>,
-    staged: Option<Arc<Index>>,
+static ACTIVE: Lazy<ArcSwap<Index>> = Lazy::new(|| ArcSwap::from_pointee(Index::default()));
+
+#[derive(Default)]
+pub struct IndexManager {
+    // Only writers touch this; protects the optional staged snapshot.
+    staged: Mutex<Option<Arc<Index>>>,
 }
 
-static MANAGER: Lazy<RwLock<IndexManager>> = Lazy::new(|| RwLock::new(IndexManager::default()));
+static MANAGER: Lazy<IndexManager> = Lazy::new(IndexManager::default);
 
 impl IndexManager {
+    // Readers: lock-free snapshot
     pub fn active_index(&self) -> Arc<Index> {
-        self.staged
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| Arc::clone(&self.current))
+        ACTIVE.load_full()
     }
 
-    pub fn current_index(&self) -> Arc<Index> {
-        self.current.clone()
-    }
-
-    pub fn staged_index(&self) -> Option<Arc<Index>> {
-        self.staged.clone()
-    }
-
-    pub fn has_staged(&self) -> bool {
-        self.staged.is_some()
-    }
-
-    pub fn begin_staging(&mut self) -> Result<()> {
-        if self.staged.is_some() {
+    pub fn begin_staging(&self) -> Result<()> {
+        let mut g = self.staged.lock();
+        if g.is_some() {
             return Err(Error::StagingAlreadyActive);
         }
-        self.staged = Some(Arc::new(self.current.clone_shallow()));
+        // Start from current active snapshot
+        *g = Some(ACTIVE.load_full());
         Ok(())
     }
 
-    pub fn promote_staged(&mut self) -> Result<()> {
-        let staged = self.staged.take().ok_or(Error::StagingNotActive)?;
-        self.current = staged;
+    pub fn stage_file(&self, key: PathKey, bytes: Arc<[u8]>, mtime: i64) -> Result<()> {
+        let mut g = self.staged.lock();
+        let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
+        let idx: &mut Index = Arc::make_mut(staged); // split on first write
+
+        let ext = Path::new(key.as_str())
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_owned();
+
+        let entry = FileEntry::from_bytes(ext, mtime, bytes);
+        idx.upsert_file(key, entry);
         Ok(())
     }
 
-    pub fn revert_staged(&mut self) -> Result<()> {
-        if self.staged.is_none() {
+    pub fn remove_staged_file(&self, key: PathKey) -> Result<()> {
+        let mut g = self.staged.lock();
+        let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
+        let idx: &mut Index = Arc::make_mut(staged);
+        let _ = idx.remove_file(key);
+        Ok(())
+    }
+
+    pub fn promote_staged(&self) -> Result<()> {
+        let mut g = self.staged.lock();
+        let staged = g.take().ok_or(Error::StagingNotActive)?;
+        // O(1) atomic swap; existing readers keep their old Arc<Index> until they drop it.
+        ACTIVE.store(staged);
+        Ok(())
+    }
+
+    pub fn revert_staged(&self) -> Result<()> {
+        let mut g = self.staged.lock();
+        if g.is_none() {
             return Err(Error::StagingNotActive);
         }
-        self.staged = None;
+        *g = None;
         Ok(())
     }
 }
