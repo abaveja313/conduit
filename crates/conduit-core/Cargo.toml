@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+camino = "1.2.0"
+once_cell = "1.21.3"
+parking_lot = "0.12.4"
+thiserror = "2.0.16"

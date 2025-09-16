@@ -1,1 +1,3 @@
-// core algorithms crate
+mod error;
+mod index;
+mod manager;

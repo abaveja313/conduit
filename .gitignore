@@ -174,3 +174,5 @@ target
 .idea/
 .cursor/
 .cursor/*
+.experiments
+.experiments/*
