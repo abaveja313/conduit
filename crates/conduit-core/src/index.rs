@@ -1,3 +1,4 @@
+use globset::GlobSet;
 use im::{HashMap as IHashMap, OrdSet as IOrdSet};
 use std::{
     ops::Bound::{Included, Unbounded},
@@ -96,5 +97,35 @@ impl Index {
             .take_while(|p| p.as_str().starts_with(prefix.as_str()))
             .copied()
             .collect()
+    }
+
+    /// Find candidate files in the index that match the criteria provided
+    pub fn candidate<'a>(
+        &'a self,
+        prefix: Option<PathKey>,
+        includes: Option<&'a [GlobSet]>,
+        excludes: Option<&'a [GlobSet]>,
+    ) -> impl Iterator<Item = (PathKey, &'a FileEntry)> + 'a {
+        // lower bound is the prefix
+        let lower = prefix.map_or(Unbounded, Included);
+        self.prefixes
+            .range((lower, Unbounded))
+            .copied()
+            .take_while(move |k| prefix.map_or(true, |p| k.starts_with(&p)))
+            .filter(move |k| {
+                // filter if file is not included
+                if let Some(globs) = includes {
+                    return globs.iter().any(|g| k.matches(g));
+                }
+                true
+            })
+            .filter(move |k| {
+                // filter if file is excuded
+                if let Some(globs) = excludes {
+                    return !globs.iter().any(|g| k.matches(g));
+                }
+                true
+            })
+            .filter_map(move |k| self.get_file(k).map(|file| (k, file)))
     }
 }

@@ -78,6 +78,14 @@ impl PathKey {
     pub fn as_str(&self) -> &str {
         self.0
     }
+
+    pub fn starts_with(&self, prefix: &PathKey) -> bool {
+        self.as_str().starts_with(prefix.as_str())
+    }
+
+    pub fn matches(&self, glob: &globset::GlobSet) -> bool {
+        glob.is_match(self.as_str())
+    }
 }
 
 impl TryFrom<&str> for PathKey {
