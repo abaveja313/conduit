@@ -1,6 +1,3 @@
 [workspace]
-members = [
-  "crates/conduit-core",
-  "crates/conduit-wasm"
-]
+members = ["crates/conduit-core", "crates/conduit-matcher", "crates/conduit-wasm"]
 resolver = "2"
