@@ -100,7 +100,7 @@ impl Index {
     }
 
     /// Find candidate files in the index that match the criteria provided
-    pub fn candidate<'a>(
+    pub fn candidates<'a>(
         &'a self,
         prefix: Option<PathKey>,
         includes: Option<&'a [GlobSet]>,

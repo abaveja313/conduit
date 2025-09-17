@@ -1,4 +1,4 @@
-//! intern.rs — Process-wide path interning (leak-forever)
+//! path.rs — Process-wide path interning (leak-forever)
 //!
 //! Invariants:
 //! - Global pool; identical inputs return pointer-equal strings.
