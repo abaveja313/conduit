@@ -14,6 +14,9 @@ pub enum Error {
 
     #[error("invalid path provided: {0}")]
     InvalidPath(String),
+
+    #[error("tool error: {0}")]
+    ToolError(#[from] conduit_tools::error::ToolError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
