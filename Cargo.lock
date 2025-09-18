@@ -73,24 +73,17 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "camino",
- "conduit-tools",
  "globset",
+ "grep-regex",
+ "grep-searcher",
  "im",
+ "memchr",
  "normalize-path",
  "once_cell",
  "parking_lot",
  "path-slash",
- "thiserror",
-]
-
-[[package]]
-name = "conduit-tools"
-version = "0.1.0"
-dependencies = [
- "grep-regex",
- "grep-searcher",
- "memchr",
  "regex",
+ "serde",
  "thiserror",
 ]
 
@@ -352,6 +345,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd6c24dee235d0da097043389623fb913daddf92c76e9f5a1db88607a0bcbd1d"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]
