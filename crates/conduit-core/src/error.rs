@@ -3,6 +3,7 @@ use thiserror::Error;
 /// Canonical errors for conduit core
 #[derive(Error, Debug)]
 pub enum Error {
+    // -------- FS / Index --------
     #[error("staging not active")]
     StagingNotActive,
 
@@ -15,8 +16,25 @@ pub enum Error {
     #[error("invalid path provided: {0}")]
     InvalidPath(String),
 
-    #[error("tool error: {0}")]
-    ToolError(#[from] conduit_tools::error::ToolError),
+    // -------- Search / Replace / Preview --------
+    #[error("invalid range: [{0}, {1})")]
+    InvalidRange(usize, usize),
+
+    #[error("operation aborted")]
+    Aborted,
+
+    #[error("encoding conversion failed")]
+    Encoding,
+
+    // -------- Wrapped sources --------
+    #[error(transparent)]
+    Regex(#[from] regex::Error),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+
+    #[error(transparent)]
+    Glob(#[from] globset::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
