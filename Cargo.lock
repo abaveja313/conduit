@@ -74,6 +74,7 @@ dependencies = [
  "arc-swap",
  "camino",
  "globset",
+ "grep-matcher",
  "grep-regex",
  "grep-searcher",
  "im",

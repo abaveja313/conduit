@@ -35,6 +35,13 @@ pub enum Error {
 
     #[error(transparent)]
     Glob(#[from] globset::Error),
+
+    #[error(transparent)]
+    Grep(#[from] grep_regex::Error),
+
+    // todo: do we really need this?
+    #[error(transparent)]
+    GrepMatcher(#[from] grep_matcher::NoError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
