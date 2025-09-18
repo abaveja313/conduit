@@ -42,7 +42,6 @@ pub struct RegexMatcher {
 
 impl RegexMatcher {
     /// Compile a regex pattern into a matcher.
-
     pub fn compile(pattern: &str, opts: &RegexEngineOpts) -> Result<Self> {
         let mut b = RegexMatcherBuilder::new();
         b.case_insensitive(opts.case_insensitive)

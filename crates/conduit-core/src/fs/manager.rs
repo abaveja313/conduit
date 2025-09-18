@@ -69,7 +69,7 @@ impl IndexManager {
         let mut g = self.staged.lock();
         let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
         let idx: &mut Index = Arc::make_mut(staged);
-        let _ = idx.remove_file(&key);
+        let _ = idx.remove_file(key);
         Ok(())
     }
 

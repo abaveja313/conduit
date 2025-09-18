@@ -36,6 +36,13 @@ impl ByteSpan {
         self.end.saturating_sub(self.start)
     }
 
+    /// True if the span is empty (start == end).
+    #[inline]
+    #[must_use]
+    pub fn is_empty(self) -> bool {
+        self.start == self.end
+    }
+
     /// True if half-open intervals overlap:
     /// `self.start < other.end && other.start < self.end`.
     #[inline]
@@ -128,6 +135,13 @@ impl LineSpan {
     #[must_use]
     pub fn len(self) -> usize {
         self.span.len()
+    }
+
+    /// True if the line is empty (has no bytes).
+    #[inline]
+    #[must_use]
+    pub fn is_empty(self) -> bool {
+        self.span.is_empty()
     }
 
     /// Convert to `Range<usize>` of the line bytes.
@@ -247,10 +261,8 @@ impl Match {
         self.line = self.line.map(|n| n.shift_saturating(delta));
 
         if let Some(ref mut caps) = self.captures {
-            for c in caps.iter_mut() {
-                if let Some(s) = c {
-                    *s = s.shift_saturating(delta);
-                }
+            for s in caps.iter_mut().flatten() {
+                *s = s.shift_saturating(delta);
             }
         }
     }

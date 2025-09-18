@@ -55,7 +55,7 @@ impl PreviewBuilder {
         // Get byte range for the preview lines
         let byte_range = line_index
             .span_of_lines(p_start, p_end)
-            .ok_or_else(|| Error::InvalidRange(p_start, p_end))?;
+            .ok_or(Error::InvalidRange(p_start, p_end))?;
 
         // Extract and convert to UTF-8 (lossy for non-UTF-8 files)
         let excerpt_bytes = &bytes[byte_range.to_range()];

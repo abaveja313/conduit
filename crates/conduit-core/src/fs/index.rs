@@ -130,7 +130,7 @@ impl Index {
 
         self.prefixes
             .range((lower, Unbounded))
-            .take_while(move |k| prefix.map_or(true, |p| k.starts_with(p)))
+            .take_while(move |k| prefix.is_none_or(|p| k.starts_with(p)))
             .filter(move |k| {
                 if let Some(globs) = includes {
                     globs.iter().any(|g| k.matches(g))
