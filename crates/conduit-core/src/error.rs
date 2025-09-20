@@ -1,3 +1,4 @@
+use grep_searcher::SinkError;
 use thiserror::Error;
 
 /// Canonical errors for conduit core
@@ -42,6 +43,15 @@ pub enum Error {
     // todo: do we really need this?
     #[error(transparent)]
     GrepMatcher(#[from] grep_matcher::NoError),
+
+    #[error("pattern error: {0}")]
+    Pattern(String),
+}
+
+impl SinkError for Error {
+    fn error_message<T: std::fmt::Display>(message: T) -> Self {
+        Error::Pattern(message.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

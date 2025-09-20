@@ -1,128 +1,124 @@
+//! Regex matcher using grep-regex.
+
 use crate::error::Result;
 use crate::tools::model::ByteSpan;
 
 use grep_matcher::{Captures as _, Matcher};
 use grep_regex::{RegexMatcher as GrepMatcher, RegexMatcherBuilder};
 
-/// Configuration options for regex compilation.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// Regex compilation options.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RegexEngineOpts {
-    /// Case-insensitive ("i")
     pub case_insensitive: bool,
-    /// Unicode classes/word boundaries
     pub unicode: bool,
-    /// Whole-word matching
     pub word: bool,
-    /// CRLF anchor semantics (affects ^/$ around \r\n)
     pub crlf: bool,
-    /// Anchor-multiline ("m"): ^/$ match at internal line boundaries
-    pub anchor_multiline: bool,
-    /// Dot-all ("s"): `.` matches `\n`
-    pub dot_matches_new_line: bool,
+    pub multiline: bool, // Simplified name
+    pub dot_all: bool,   // More standard name
 }
 
-impl Default for RegexEngineOpts {
-    fn default() -> Self {
-        Self {
-            case_insensitive: false,
-            unicode: true,
-            word: false,
-            crlf: false,
-            anchor_multiline: false,
-            dot_matches_new_line: false,
-        }
-    }
-}
-
-/// Thin wrapper around `grep_regex::RegexMatcher`.
+/// Compiled regex matcher.
 pub struct RegexMatcher {
     inner: GrepMatcher,
 }
 
 impl RegexMatcher {
-    /// Compile a regex pattern into a matcher.
+    /// Compile a pattern with the given options.
     pub fn compile(pattern: &str, opts: &RegexEngineOpts) -> Result<Self> {
-        let mut b = RegexMatcherBuilder::new();
-        b.case_insensitive(opts.case_insensitive)
+        let matcher = RegexMatcherBuilder::new()
+            .case_insensitive(opts.case_insensitive)
             .unicode(opts.unicode)
             .word(opts.word)
             .crlf(opts.crlf)
-            .multi_line(opts.anchor_multiline)
-            .dot_matches_new_line(opts.dot_matches_new_line);
+            .multi_line(opts.multiline)
+            .dot_matches_new_line(opts.dot_all)
+            .build(pattern)?;
 
-        let matcher = b.build(pattern)?;
         Ok(Self { inner: matcher })
     }
 
-    /// Enumerate non-overlapping matches within `region` (relative offsets).
-    ///
-    /// Calls `on_match((start, end))` for each occurrence. Return `false`
-    /// from the closure to stop early.
-    pub fn find_in_region(
+    /// Find all matches in a region, calling the callback for each.
+    pub fn find_matches(
         &self,
         region: &[u8],
-        mut on_match: impl FnMut((usize, usize)) -> bool,
+        mut on_match: impl FnMut(ByteSpan) -> bool,
     ) -> Result<()> {
-        self.inner
-            .find_iter(region, |m| on_match((m.start(), m.end())))?;
+        self.inner.find_iter(region, |m| {
+            let span = ByteSpan {
+                start: m.start(),
+                end: m.end(),
+            };
+            on_match(span)
+        })?;
         Ok(())
     }
 
-    /// Return capture spans ($1..$N) for the match that *begins at* `match_start`
-    /// (relative to `region`). `$0` is omitted since the caller already knows it.
-    ///
-    /// The vector is indexed so that index 0 corresponds to `$1`, index 1 -> `$2`, etc.
-    pub fn capture_spans_at(
-        &self,
-        region: &[u8],
-        match_start: usize,
-    ) -> Result<Option<Vec<Option<ByteSpan>>>> {
+    /// Get capture groups for a match at the given position.
+    pub fn captures_at(&self, region: &[u8], start: usize) -> Result<Vec<Option<ByteSpan>>> {
         let mut caps = self.inner.new_captures()?;
-        let ok = self.inner.captures_at(region, match_start, &mut caps)?;
-        if !ok {
-            return Ok(None);
+
+        if !self.inner.captures_at(region, start, &mut caps)? {
+            return Ok(Vec::new());
         }
-        let n = caps.len();
-        let mut out = Vec::with_capacity(n.saturating_sub(1));
-        for i in 1..n {
-            let bs = caps.get(i).map(|m| ByteSpan {
-                start: m.start(),
-                end: m.end(),
-            });
-            out.push(bs);
-        }
-        Ok(Some(out))
+
+        // Skip $0 (whole match), return $1..$N
+        (1..caps.len())
+            .map(|i| {
+                Ok(caps.get(i).map(|m| ByteSpan {
+                    start: m.start(),
+                    end: m.end(),
+                }))
+            })
+            .collect()
     }
 
-    /// Expand a replacement template for the match that *begins at* `match_start`
-    /// within `region`, appending the expansion to `out`.
-    ///
-    /// Supported forms: `$1`, `${1}`, `$name`, `${name}`, and `$$`.
-    pub fn expand_captures(
+    /// Replace all matches in a region, writing to dst.
+    pub fn replace_all(&self, region: &[u8], replacement: &str, dst: &mut Vec<u8>) -> Result<()> {
+        let mut caps = self.inner.new_captures()?;
+        let repl_bytes = replacement.as_bytes();
+
+        self.inner
+            .replace_with_captures(region, &mut caps, dst, |caps, out| {
+                // Use interpolate for full $1, ${name}, $$ support
+                let mut name_to_index = |name: &str| {
+                    name.parse::<usize>()
+                        .ok()
+                        .or_else(|| self.inner.capture_index(name))
+                };
+                caps.interpolate(&mut name_to_index, region, repl_bytes, out);
+                true // Continue replacing
+            })?;
+
+        Ok(())
+    }
+
+    /// Replace a single match at the given position.
+    pub fn replace_at(
         &self,
         region: &[u8],
-        match_start: usize,
+        start: usize,
         replacement: &str,
         out: &mut Vec<u8>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let mut caps = self.inner.new_captures()?;
-        if !self.inner.captures_at(region, match_start, &mut caps)? {
-            return Ok(());
+
+        if !self.inner.captures_at(region, start, &mut caps)? {
+            return Ok(false);
         }
-        // Map $name → index (handles $1 and $foo).
+
         let mut name_to_index = |name: &str| {
             name.parse::<usize>()
                 .ok()
                 .or_else(|| self.inner.capture_index(name))
         };
+
         caps.interpolate(&mut name_to_index, region, replacement.as_bytes(), out);
-        Ok(())
+        Ok(true)
     }
 
-    /// Access the underlying `grep_regex::RegexMatcher` if needed.
-    #[inline]
-    pub fn inner(&self) -> &GrepMatcher {
+    /// Access to underlying matcher for use with grep_searcher.
+    pub(crate) fn as_grep_matcher(&self) -> &GrepMatcher {
         &self.inner
     }
 }

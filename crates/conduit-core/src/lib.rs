@@ -5,8 +5,8 @@ pub mod tools;
 pub use error::{Error, Result};
 pub use fs::prelude::*;
 pub use tools::{
-    AbortFlag, ByteSpan, LineIndex, LineSpan, Match, PreviewBuilder, PreviewHunk, RegexEngineOpts,
-    RegexMatcher,
+    search_regions, AbortFlag, ByteSpan, LineIndex, LineSpan, Match, MatchRegion, PreviewBuilder,
+    PreviewHunk, RegexEngineOpts, RegexMatcher,
 };
 
 /// Selects which buffer set to operate on.
