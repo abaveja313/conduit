@@ -1,17 +1,11 @@
 //! replace.rs — build and apply a staged replace plan over an in-memory buffer.
 
-//! Notes:
-//!   - Matches are gathered non-overlapping per the regex engine; we still sort+filter globally
-//!     to guarantee a non-overlapping plan across regions.
-//!   - `line_shift` is (# '\n' in replacement) − (# '\n' in original span). This is useful
-//!     when composing previews or updating external line metadata after apply.
-
 use crate::error::Result;
 use crate::tools::abort::AbortFlag;
 use crate::tools::matcher::RegexMatcher;
 use crate::tools::model::ByteSpan;
 use crate::tools::search::{search_regions, MatchRegion};
-use memchr::memchr_iter;
+use crate::Error;
 
 /// One concrete edit to apply to the haystack.
 #[derive(Debug, Clone)]
@@ -20,8 +14,6 @@ pub struct EditOp {
     pub span: ByteSpan,
     /// Replacement bytes for this span.
     pub replacement: Vec<u8>,
-    /// Net line delta introduced by this op: newlines(replacement) − newlines(original).
-    pub line_shift: isize,
 }
 
 /// A set of non-overlapping, start-sorted edits.
@@ -37,14 +29,7 @@ impl ReplacePlan {
     }
 }
 
-#[inline]
-fn count_newlines(bytes: &[u8]) -> usize {
-    memchr_iter(b'\n', bytes).count()
-}
-
 /// Build a replace plan over `haystack`.
-///
-/// Returns a **non-overlapping, start-sorted** plan.
 pub fn plan_in_bytes(
     haystack: &[u8],
     re: &RegexMatcher,
@@ -75,21 +60,18 @@ pub fn plan_in_bytes(
                 tmp.clear();
                 match re.replace_at(region.bytes, span.start, replacement_tpl, &mut tmp) {
                     Ok(replaced) => {
+                        let abs = ByteSpan {
+                            start: region.byte_offset + span.start,
+                            end: region.byte_offset + span.end,
+                        };
+
                         if replaced {
-                            let abs = ByteSpan {
-                                start: region.byte_offset + span.start,
-                                end: region.byte_offset + span.end,
-                            };
-
-                            let old = &region.bytes[span.start..span.end];
-                            let line_shift =
-                                count_newlines(&tmp) as isize - count_newlines(old) as isize;
-
                             ops.push(EditOp {
                                 span: abs,
                                 replacement: tmp.clone(),
-                                line_shift,
                             });
+                        } else {
+                            return Err(Error::NoReplacementFound(abs.start, abs.end));
                         }
                     }
                     Err(e) => return Err(e),
@@ -100,21 +82,25 @@ pub fn plan_in_bytes(
         },
     )?;
 
-    // Globally sort and drop overlaps (keep the earliest, left-to-right).
-    if ops.len() > 1 {
-        ops.sort_by_key(|op| op.span.start);
-        let mut filtered = Vec::with_capacity(ops.len());
-        let mut last_end = 0usize;
-        for op in ops.into_iter() {
-            if op.span.start >= last_end {
-                last_end = op.span.end;
-                filtered.push(op);
+    // grep-searcher returns non-overlapping line-based regions, and the regex
+    // engine returns non-overlapping matches within each region, so we shouldn't
+    // have overlaps. This assertion verifies our assumption in debug builds.
+    #[cfg(debug_assertions)]
+    {
+        for i in 1..ops.len() {
+            if ops[i].span.start < ops[i - 1].span.end {
+                panic!(
+                    "Unexpected overlap: op[{}] starts at {} but op[{}] ends at {}",
+                    i,
+                    ops[i].span.start,
+                    i - 1,
+                    ops[i - 1].span.end
+                );
             }
         }
-        Ok(ReplacePlan { ops: filtered })
-    } else {
-        Ok(ReplacePlan { ops })
     }
+
+    Ok(ReplacePlan { ops })
 }
 
 /// Apply a previously built plan to `haystack` in a single pass.
@@ -125,15 +111,7 @@ pub fn apply_plan(haystack: &[u8], plan: &ReplacePlan) -> Vec<u8> {
         return haystack.to_vec();
     }
 
-    // Capacity heuristic: grow only by net positive deltas.
-    let mut cap = haystack.len();
-    for op in &plan.ops {
-        let old_len = op.span.end - op.span.start;
-        if op.replacement.len() > old_len {
-            cap += op.replacement.len() - old_len;
-        }
-    }
-    let mut out = Vec::with_capacity(cap);
+    let mut out = Vec::with_capacity(haystack.len());
 
     let mut cursor = 0usize;
     for op in &plan.ops {

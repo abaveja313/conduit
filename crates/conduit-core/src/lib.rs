@@ -108,8 +108,6 @@ pub struct EditItem {
     pub original_range: (usize, usize),
     /// Line range after replacement (may shift due to added/removed lines).
     pub staged_range: (usize, usize),
-    /// Net lines added (positive) or removed (negative).
-    pub line_shift: isize,
 }
 
 /// Edit operation results.

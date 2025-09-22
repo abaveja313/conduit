@@ -12,7 +12,7 @@ pub use matcher::{RegexEngineOpts, RegexMatcher};
 pub use model::{ByteSpan, LineSpan, Match};
 pub use preview::{PreviewBuilder, PreviewHunk};
 pub use replace::{EditOp, ReplacePlan};
-pub use search::{search_regions, MatchRegion};
+pub use search::{for_each_match, search_regions, MatchRegion};
 pub mod prelude {
     pub use super::{
         AbortFlag, ByteSpan, LineIndex, LineSpan, Match, PreviewBuilder, PreviewHunk,

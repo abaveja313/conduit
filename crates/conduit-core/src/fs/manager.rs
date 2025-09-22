@@ -93,6 +93,17 @@ impl IndexManager {
         *g = None;
         Ok(())
     }
+
+    /// Get staged index snapshot (fails if not staging).
+    ///
+    /// This is a cheap Arc clone, safe to hold across operations.
+    pub fn staged_index(&self) -> Result<Arc<Index>> {
+        self.staged
+            .lock()
+            .as_ref()
+            .cloned()
+            .ok_or(Error::StagingNotActive)
+    }
 }
 
 /// Get global manager instance.

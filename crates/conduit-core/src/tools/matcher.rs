@@ -7,15 +7,34 @@ use grep_matcher::{Captures as _, Matcher};
 use grep_regex::{RegexMatcher as GrepMatcher, RegexMatcherBuilder};
 
 /// Regex compilation options.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RegexEngineOpts {
+    /// Whether to match case insensitively.
     pub case_insensitive: bool,
+    /// Whether to match unicode characters.
     pub unicode: bool,
+    /// Whether to match whole words only.
     pub word: bool,
+    /// Whether to match CRLF as a single line terminator.
     pub crlf: bool,
-    pub multiline: bool, // Simplified name
-    pub dot_all: bool,   // More standard name
+    /// Whether to match multiple lines.
+    pub multiline: bool,
+    /// Whether to match . (dot) to match newlines.
+    pub dot_all: bool, // More standard name
+}
+
+impl Default for RegexEngineOpts {
+    fn default() -> Self {
+        Self {
+            case_insensitive: false,
+            unicode: true,
+            word: false,
+            crlf: false,
+            multiline: false,
+            dot_all: false,
+        }
+    }
 }
 
 /// Compiled regex matcher.
@@ -24,6 +43,11 @@ pub struct RegexMatcher {
 }
 
 impl RegexMatcher {
+    /// Compile a pattern with default options.
+    pub fn new(pattern: &str) -> Result<Self> {
+        Self::compile(pattern, &RegexEngineOpts::default())
+    }
+
     /// Compile a pattern with the given options.
     pub fn compile(pattern: &str, opts: &RegexEngineOpts) -> Result<Self> {
         let matcher = RegexMatcherBuilder::new()
@@ -81,11 +105,8 @@ impl RegexMatcher {
         self.inner
             .replace_with_captures(region, &mut caps, dst, |caps, out| {
                 // Use interpolate for full $1, ${name}, $$ support
-                let mut name_to_index = |name: &str| {
-                    name.parse::<usize>()
-                        .ok()
-                        .or_else(|| self.inner.capture_index(name))
-                };
+                // Note: interpolate handles numeric refs ($1) internally
+                let mut name_to_index = |name: &str| self.inner.capture_index(name);
                 caps.interpolate(&mut name_to_index, region, repl_bytes, out);
                 true // Continue replacing
             })?;
@@ -107,12 +128,8 @@ impl RegexMatcher {
             return Ok(false);
         }
 
-        let mut name_to_index = |name: &str| {
-            name.parse::<usize>()
-                .ok()
-                .or_else(|| self.inner.capture_index(name))
-        };
-
+        // Note: interpolate handles numeric refs ($1) internally
+        let mut name_to_index = |name: &str| self.inner.capture_index(name);
         caps.interpolate(&mut name_to_index, region, replacement.as_bytes(), out);
         Ok(true)
     }

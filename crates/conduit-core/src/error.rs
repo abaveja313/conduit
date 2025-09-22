@@ -46,6 +46,9 @@ pub enum Error {
 
     #[error("pattern error: {0}")]
     Pattern(String),
+
+    #[error("no replacement found at ({0}, {1})")]
+    NoReplacementFound(usize, usize),
 }
 
 impl SinkError for Error {
