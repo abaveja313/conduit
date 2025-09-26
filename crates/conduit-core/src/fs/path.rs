@@ -1,12 +1,9 @@
 use normalize_path::NormalizePath;
-use once_cell::sync::Lazy;
-use parking_lot::RwLock;
 use path_slash::PathExt;
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use crate::error::{Error, Result};
 
-// Needed for `matches(&GlobSet)`
 use globset::GlobSet;
 
 /// Represents a normalized path in the virtual file system.
@@ -16,10 +13,7 @@ use globset::GlobSet;
     Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
 #[serde(transparent)]
-pub struct PathKey(pub Arc<str>);
-
-/// Global pool of interned paths.
-static INTERN_POOL: Lazy<RwLock<HashSet<Arc<str>>>> = Lazy::new(|| RwLock::new(HashSet::new()));
+pub struct PathKey(Arc<str>);
 
 /// Normalize the provided path to the canonical format.
 ///
@@ -28,7 +22,7 @@ static INTERN_POOL: Lazy<RwLock<HashSet<Arc<str>>>> = Lazy::new(|| RwLock::new(H
 /// - Normalize OS separators, collapse `.`/`..`
 /// - Convert to POSIX slashes
 /// - Strip trailing slashes (except root)
-fn normalize_for_index(s: &str) -> Result<String> {
+pub fn normalize_path(s: &str) -> Result<String> {
     if s.is_empty() {
         return Err(Error::InvalidPath("empty path".to_string()));
     }
@@ -48,29 +42,13 @@ fn normalize_for_index(s: &str) -> Result<String> {
     Ok(out)
 }
 
-/// Intern a normalized string into the global pool and return an Arc.
-fn intern(normalized: &str) -> Arc<str> {
-    // fast path: reader lock
-    if let Some(existing) = INTERN_POOL.read().get(normalized) {
-        return Arc::clone(existing);
-    }
-
-    // slow path: writer lock with double-check
-    let mut pool = INTERN_POOL.write();
-    if let Some(existing) = pool.get(normalized) {
-        return Arc::clone(existing);
-    }
-
-    let arc: Arc<str> = Arc::<str>::from(normalized);
-    pool.insert(Arc::clone(&arc));
-    arc
-}
-
 impl PathKey {
-    /// Construct from a **pre-normalized** string without re-validating.
+    /// Construct from a **pre-normalized** string with a given Arc.
+    ///
+    /// This is used when the string has already been interned elsewhere.
     #[inline]
-    pub fn from_normalized(normalized: &str) -> Self {
-        Self(intern(normalized))
+    pub fn from_arc(arc: Arc<str>) -> Self {
+        Self(arc)
     }
 
     /// Normalized string slice.
@@ -89,23 +67,6 @@ impl PathKey {
     #[inline]
     pub fn matches(&self, glob: &GlobSet) -> bool {
         glob.is_match(self.as_str())
-    }
-}
-
-impl TryFrom<&str> for PathKey {
-    type Error = Error;
-
-    fn try_from(value: &str) -> Result<Self> {
-        let normalized = normalize_for_index(value)?;
-        Ok(PathKey::from_normalized(&normalized))
-    }
-}
-
-impl TryFrom<String> for PathKey {
-    type Error = Error;
-
-    fn try_from(value: String) -> Result<Self> {
-        PathKey::try_from(value.as_str())
     }
 }
 

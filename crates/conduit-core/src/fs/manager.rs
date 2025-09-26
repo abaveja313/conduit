@@ -1,5 +1,5 @@
 use arc_swap::ArcSwap;
-use once_cell::sync::Lazy;
+use im::OrdSet as IOrdSet;
 use parking_lot::Mutex; // only guards staging state
 use std::path::Path;
 use std::sync::Arc;
@@ -8,28 +8,37 @@ use crate::error::{Error, Result};
 use crate::fs::PathKey;
 use crate::fs::{FileEntry, Index};
 
-/// Active index, atomically swappable for lock-free reads.
-static ACTIVE: Lazy<ArcSwap<Index>> = Lazy::new(|| ArcSwap::from_pointee(Index::default()));
-
+#[derive(Default, Clone)]
+pub struct StagingState {
+    snapshot: Arc<Index>,
+    modified: IOrdSet<PathKey>,
+}
 /// Manages staged index updates with copy-on-write semantics.
 ///
 /// Architecture:
 /// - Readers get lock-free snapshots via `ArcSwap`
 /// - Writers stage changes on a cloned index (O(1) with `im`)
 /// - Promotion atomically swaps in the new index
-#[derive(Default)]
 pub struct IndexManager {
+    // Active index, atomically swappable for lock-free reads.
+    active: ArcSwap<Index>,
     // Only writers touch this; protects the optional staged snapshot.
-    staged: Mutex<Option<Arc<Index>>>,
+    staged: Mutex<Option<StagingState>>,
 }
 
-/// Global index manager singleton.
-static MANAGER: Lazy<IndexManager> = Lazy::new(IndexManager::default);
+impl Default for IndexManager {
+    fn default() -> Self {
+        Self {
+            active: ArcSwap::from_pointee(Index::default()),
+            staged: Mutex::new(None),
+        }
+    }
+}
 
 impl IndexManager {
     /// Current index snapshot (lock-free).
     pub fn active_index(&self) -> Arc<Index> {
-        ACTIVE.load_full()
+        self.active.load_full()
     }
 
     /// Start staging changes. Fails if already staging.
@@ -37,11 +46,15 @@ impl IndexManager {
     /// Creates O(1) clone of current index for modifications.
     pub fn begin_staging(&self) -> Result<()> {
         let mut g = self.staged.lock();
+
         if g.is_some() {
             return Err(Error::StagingAlreadyActive);
         }
         // Start from current active snapshot
-        *g = Some(ACTIVE.load_full());
+        *g = Some(StagingState {
+            snapshot: self.active.load_full(),
+            modified: IOrdSet::new(),
+        });
         Ok(())
     }
 
@@ -51,7 +64,10 @@ impl IndexManager {
     pub fn stage_file(&self, key: PathKey, bytes: Arc<[u8]>, mtime: i64) -> Result<()> {
         let mut g = self.staged.lock();
         let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
-        let idx: &mut Index = Arc::make_mut(staged); // split on first write
+        let idx = Arc::make_mut(&mut staged.snapshot); // split on first write
+
+        // track modification
+        staged.modified.insert(key.clone());
 
         let ext = Path::new(key.as_str())
             .extension()
@@ -68,7 +84,8 @@ impl IndexManager {
     pub fn remove_staged_file(&self, key: &PathKey) -> Result<()> {
         let mut g = self.staged.lock();
         let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
-        let idx: &mut Index = Arc::make_mut(staged);
+        let idx = Arc::make_mut(&mut staged.snapshot);
+        staged.modified.insert(key.clone());
         let _ = idx.remove_file(key);
         Ok(())
     }
@@ -80,7 +97,7 @@ impl IndexManager {
         let mut g = self.staged.lock();
         let staged = g.take().ok_or(Error::StagingNotActive)?;
         // O(1) atomic swap; existing readers keep their old Arc<Index> until they drop it.
-        ACTIVE.store(staged);
+        self.active.store(staged.snapshot);
         Ok(())
     }
 
@@ -103,15 +120,6 @@ impl IndexManager {
             .as_ref()
             .cloned()
             .ok_or(Error::StagingNotActive)
+            .map(|s| s.snapshot)
     }
-}
-
-/// Get global manager instance.
-pub fn manager() -> &'static IndexManager {
-    &MANAGER
-}
-
-/// Shortcut for current index.
-pub fn active_index() -> Arc<Index> {
-    MANAGER.active_index()
 }
