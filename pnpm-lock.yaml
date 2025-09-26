@@ -67,10 +67,10 @@ importers:
         version: link:../../packages/shared
       '@mcp-b/transports':
         specifier: ^1.0.3
-        version: 1.0.3(@modelcontextprotocol/sdk@1.18.0)
+        version: 1.0.3(@modelcontextprotocol/sdk@1.18.2)
       '@modelcontextprotocol/sdk':
-        specifier: ^1.18.0
-        version: 1.18.0
+        specifier: ^1.18.2
+        version: 1.18.2
       next:
         specifier: 15.5.3
         version: 15.5.3(@playwright/test@1.55.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -167,8 +167,8 @@ importers:
         specifier: workspace:*
         version: link:../transports
       '@modelcontextprotocol/sdk':
-        specifier: ^1.18.0
-        version: 1.18.0
+        specifier: ^1.18.2
+        version: 1.18.2
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -214,8 +214,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@modelcontextprotocol/sdk':
-        specifier: ^1.18.0
-        version: 1.18.0
+        specifier: ^1.18.2
+        version: 1.18.2
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -708,8 +708,8 @@ packages:
     peerDependencies:
       '@modelcontextprotocol/sdk': ^1.15.0
 
-  '@modelcontextprotocol/sdk@1.18.0':
-    resolution: {integrity: sha512-JvKyB6YwS3quM+88JPR0axeRgvdDu3Pv6mdZUy+w4qVkCzGgumb9bXG/TmtDRQv+671yaofVfXSQmFLlWU5qPQ==}
+  '@modelcontextprotocol/sdk@1.18.2':
+    resolution: {integrity: sha512-beedclIvFcCnPrYgHsylqiYJVJ/CI47Vyc4tY8no1/Li/O8U4BTlJfy6ZwxkYwx+Mx10nrgwSVrA7VBbhh4slg==}
     engines: {node: '>=18'}
 
   '@napi-rs/wasm-runtime@0.2.12':
@@ -3820,12 +3820,12 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@mcp-b/transports@1.0.3(@modelcontextprotocol/sdk@1.18.0)':
+  '@mcp-b/transports@1.0.3(@modelcontextprotocol/sdk@1.18.2)':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.18.0
+      '@modelcontextprotocol/sdk': 1.18.2
       zod: 3.24.1
 
-  '@modelcontextprotocol/sdk@1.18.0':
+  '@modelcontextprotocol/sdk@1.18.2':
     dependencies:
       ajv: 6.12.6
       content-type: 1.0.5
@@ -4162,7 +4162,7 @@ snapshots:
     dependencies:
       '@typescript-eslint/tsconfig-utils': 8.43.0(typescript@5.9.2)
       '@typescript-eslint/types': 8.43.0
-      debug: 4.4.1
+      debug: 4.4.3
       typescript: 5.9.2
     transitivePeerDependencies:
       - supports-color
