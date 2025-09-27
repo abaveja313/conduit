@@ -1,7 +1,6 @@
 use arc_swap::ArcSwap;
 use im::OrdSet as IOrdSet;
 use parking_lot::Mutex; // only guards staging state
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::error::{Error, Result};
@@ -61,21 +60,13 @@ impl IndexManager {
     /// Add/update file in staging area.
     ///
     /// First write triggers COW split via `Arc::make_mut`.
-    pub fn stage_file(&self, key: PathKey, bytes: Arc<[u8]>, mtime: i64) -> Result<()> {
+    pub fn stage_file(&self, key: PathKey, entry: FileEntry) -> Result<()> {
         let mut g = self.staged.lock();
         let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
         let idx = Arc::make_mut(&mut staged.snapshot); // split on first write
 
         // track modification
         staged.modified.insert(key.clone());
-
-        let ext = Path::new(key.as_str())
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_owned();
-
-        let entry = FileEntry::from_bytes(ext, mtime, bytes);
         idx.upsert_file(key, entry);
         Ok(())
     }
@@ -121,5 +112,51 @@ impl IndexManager {
             .cloned()
             .ok_or(Error::StagingNotActive)
             .map(|s| s.snapshot)
+    }
+
+    /// Bulk load files into the index.
+    ///
+    /// This method:
+    /// 1. Begins fresh staging (clears any existing staging)
+    /// 2. Adds all provided files to staging
+    /// 3. Automatically commits to the active index
+    ///
+    /// This is designed for initial file loading. It replaces the entire
+    /// index with the provided files.
+    pub fn load_files(&self, files: Vec<(PathKey, FileEntry)>) -> Result<()> {
+        // Clear any existing staging and start fresh
+        {
+            let mut g = self.staged.lock();
+            *g = None;
+        }
+        self.begin_staging()?;
+
+        for (key, entry) in files {
+            self.stage_file(key, entry)?;
+        }
+
+        // Auto-commit to active index
+        self.promote_staged()?;
+
+        Ok(())
+    }
+
+    /// Add files to the current staging area without committing.
+    ///
+    /// This is for incremental loading across multiple batches.
+    /// Call `begin_staging()` first, then multiple `add_files_to_staging()`,
+    /// then `promote_staged()` when done.
+    pub fn add_files_to_staging(&self, files: Vec<(PathKey, FileEntry)>) -> Result<()> {
+        // Ensure staging is active
+        if self.staged.lock().is_none() {
+            return Err(Error::StagingNotActive);
+        }
+
+        // Add all files to existing staging
+        for (key, entry) in files {
+            self.stage_file(key, entry)?;
+        }
+
+        Ok(())
     }
 }

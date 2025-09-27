@@ -2,6 +2,7 @@ use globset::GlobSet;
 use im::{HashMap as IHashMap, OrdSet as IOrdSet};
 use std::{
     ops::Bound::{Included, Unbounded},
+    path::Path,
     sync::Arc,
 };
 
@@ -28,6 +29,15 @@ pub struct Index {
 }
 
 impl FileEntry {
+    /// Extract extension from a path string.
+    pub fn get_extension(path: &str) -> String {
+        Path::new(path)
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_owned()
+    }
+
     /// Create metadata-only entry.
     pub fn new(ext: impl Into<String>, size: u64, mtime: i64) -> Self {
         Self {
@@ -36,6 +46,11 @@ impl FileEntry {
             mtime,
             bytes: None,
         }
+    }
+
+    /// Create metadata-only entry from a path.
+    pub fn new_from_path(path: &PathKey, size: u64, mtime: i64) -> Self {
+        Self::new(Self::get_extension(path.as_str()), size, mtime)
     }
 
     /// Create entry with content.
@@ -47,6 +62,11 @@ impl FileEntry {
             mtime,
             bytes: Some(bytes),
         }
+    }
+
+    /// Create entry with content from a path.
+    pub fn from_bytes_and_path(path: &PathKey, mtime: i64, bytes: Arc<[u8]>) -> Self {
+        Self::from_bytes(Self::get_extension(path.as_str()), mtime, bytes)
     }
 
     /// Replace content, optionally updating mtime.
