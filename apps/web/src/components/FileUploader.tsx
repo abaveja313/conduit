@@ -1,8 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileService, FileScanner } from '@conduit/fs';
-import type { FileServiceStats, ScanOptions, FileMetadata } from '@conduit/fs';
+import { FileService, FileScanner, astService } from '@conduit/fs';
+import type { FileServiceStats, ScanOptions, FileMetadata, AstMatch } from '@conduit/fs';
+import dynamic from 'next/dynamic';
+
+// Dynamically import AST search panel to avoid SSR issues
+const AstSearchPanel = dynamic(() => import('./AstSearchPanel'), { ssr: false });
 
 interface FileInfo {
     path: string;
@@ -33,6 +37,8 @@ export default function FileUploader() {
     const [includePatterns, setIncludePatterns] = useState<string[]>([]);
     const [searchResults, setSearchResults] = useState<FileMetadata[]>([]);
     const [showResults, setShowResults] = useState(false);
+    const [showAstSearch, setShowAstSearch] = useState(false);
+    const [selectedMatch, setSelectedMatch] = useState<AstMatch | null>(null);
 
     // Initialize FileService and WASM
     useEffect(() => {
@@ -352,6 +358,13 @@ ${metadata.handle ? 'Handle: Available for reading' : 'Handle: Not available'}`)
                             Search Files
                         </button>
                         <button
+                            onClick={() => setShowAstSearch(!showAstSearch)}
+                            disabled={!wasmReady || !stats}
+                            className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                            {showAstSearch ? 'Hide' : 'Show'} AST Search
+                        </button>
+                        <button
                             onClick={getStats}
                             disabled={!wasmReady || !stats}
                             className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
@@ -530,6 +543,34 @@ ${metadata.handle ? 'Handle: Available for reading' : 'Handle: Not available'}`)
                 )}
 
             </div>
+            
+            {/* AST Search Panel */}
+            {showAstSearch && stats && (
+                <div className="mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+                    <AstSearchPanel
+                        onMatchSelect={(match) => {
+                            setSelectedMatch(match);
+                            console.log('Selected match:', match);
+                        }}
+                        className="h-[600px]"
+                    />
+                </div>
+            )}
+            
+            {/* Selected Match Display */}
+            {selectedMatch && (
+                <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <h4 className="font-semibold mb-2">Selected Match</h4>
+                    <div className="text-sm space-y-1">
+                        <div><strong>File:</strong> {selectedMatch.path}</div>
+                        <div><strong>Line:</strong> {selectedMatch.line}, <strong>Column:</strong> {selectedMatch.column}</div>
+                        <div><strong>Language:</strong> {selectedMatch.language}</div>
+                        <pre className="mt-2 p-2 bg-white dark:bg-gray-800 rounded text-xs overflow-x-auto">
+                            {selectedMatch.text}
+                        </pre>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

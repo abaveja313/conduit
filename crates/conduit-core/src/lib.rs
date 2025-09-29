@@ -1,6 +1,7 @@
 pub mod error;
 pub mod fs;
 pub mod tools;
+pub mod ast;
 
 pub use error::{Error, Result};
 pub use fs::prelude::*;

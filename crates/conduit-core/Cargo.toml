@@ -19,3 +19,12 @@ regex = "1.11.2"
 thiserror = "2.0.16"
 serde = { version = "1", features = ["derive", "rc"] }
 grep-matcher = "0.1.7"
+
+# Tree-sitter dependencies for AST parsing
+tree-sitter = "0.24"
+tree-sitter-rust = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-typescript = "0.24"
+tree-sitter-python = "0.24"
+tree-sitter-go = "0.23"
+tree-sitter-java = "0.23"

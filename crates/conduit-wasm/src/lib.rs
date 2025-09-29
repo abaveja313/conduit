@@ -11,6 +11,7 @@ use wasm_bindgen::prelude::*;
 
 mod globals;
 mod orchestrator;
+mod ast;
 
 // Helper macro for consistent error conversion
 macro_rules! js_err {

@@ -16,6 +16,12 @@ pub enum Error {
 
     #[error("invalid path provided: {0}")]
     InvalidPath(String),
+    
+    #[error("parse error: {0}")]
+    ParseError(String),
+    
+    #[error("AST operation error: {0}")]
+    AstError(String),
 
     // -------- Search / Replace / Preview --------
     #[error("invalid range: [{0}, {1})")]
