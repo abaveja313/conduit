@@ -92,6 +92,9 @@ dist
 **/pkg/
 artifacts/
 
+# WASM files in web app (copied from build)
+apps/web/public/workers/*.wasm
+
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js

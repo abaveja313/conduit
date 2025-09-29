@@ -51,19 +51,31 @@ export class FileScanner {
       throw new Error('File System Access API is not supported in this browser');
     }
 
+    // DEBUG: Log scan start
+    console.log('DEBUG Scanner: Starting scan of', rootHandle.name);
+    console.log('DEBUG Scanner: Options received:', options);
+
     const opts = { ...this.defaultOptions, ...options };
+    console.log('DEBUG Scanner: Merged options:', opts);
+
     const startTime = performance.now();
     const processedCount = 0;
 
     const shouldExclude = (path: string) => {
-      return opts.exclude.length > 0 && picomatch.isMatch(path, opts.exclude);
+      const isExcluded = opts.exclude.length > 0 && picomatch.isMatch(path, opts.exclude);
+      if (isExcluded) {
+        console.log('DEBUG Scanner: Excluding path:', path);
+      }
+      return isExcluded;
     };
 
     try {
       if (opts.concurrency > 1) {
+        console.log('DEBUG Scanner: Using concurrent scanning with concurrency:', opts.concurrency);
         logger.info('Using concurrent scanning', { concurrency: opts.concurrency });
         yield* this.scanConcurrent(rootHandle, opts, shouldExclude, startTime);
       } else {
+        console.log('DEBUG Scanner: Using sequential scanning');
         yield* this.scanSequential(
           rootHandle,
           '',
@@ -226,6 +238,9 @@ export class FileScanner {
     shouldExclude: (path: string) => boolean,
     startTime: number,
   ): AsyncGenerator<FileMetadata> {
+    // DEBUG: Log concurrent scan start
+    console.log('DEBUG Scanner: Starting concurrent scan');
+
     // Queue of directories to process
     const queue: Array<{ handle: FileSystemDirectoryHandle; path: string; depth: number }> = [
       { handle: rootHandle, path: '', depth: 0 },
@@ -240,7 +255,14 @@ export class FileScanner {
 
       for await (const [name, handle] of dir.handle.entries()) {
         if (opts.signal?.aborted) break;
-        if (!opts.includeHidden && name.startsWith('.')) continue;
+
+        // DEBUG: Log entry found
+        console.log(`DEBUG Scanner: Found entry "${name}" in "${dir.path}", type: ${handle.kind}`);
+
+        if (!opts.includeHidden && name.startsWith('.')) {
+          console.log(`DEBUG Scanner: Skipping hidden file: ${name}`);
+          continue;
+        }
 
         const entryPath = dir.path ? join(dir.path, name) : name;
         if (shouldExclude(entryPath)) continue;
@@ -248,7 +270,13 @@ export class FileScanner {
         try {
           if (isFileHandle(handle)) {
             const file = await handle.getFile();
-            if (opts.maxFileSize === 0 || file.size > opts.maxFileSize) continue;
+            console.log(`DEBUG Scanner: File "${entryPath}" - size: ${file.size}, maxFileSize: ${opts.maxFileSize}`);
+
+            // Fix: Check if file size exceeds max (skip if too large)
+            if (opts.maxFileSize !== Infinity && file.size > opts.maxFileSize) {
+              console.log(`DEBUG Scanner: Skipping large file: ${entryPath} (${file.size} > ${opts.maxFileSize})`);
+              continue;
+            }
 
             const metadata: FileMetadata = {
               path: entryPath,
@@ -257,10 +285,12 @@ export class FileScanner {
               type: 'file',
               lastModified: file.lastModified,
               mimeType: file.type || undefined,
+              handle, // Make sure to include the handle
             };
 
             results.push(metadata);
             processedCount++;
+            console.log(`DEBUG Scanner: Added file ${processedCount}: ${entryPath}`);
             this.emitter.emit('file', metadata);
           } else if (isDirectoryHandle(handle)) {
             const metadata: FileMetadata = {

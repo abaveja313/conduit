@@ -17,8 +17,7 @@ export type {
 
 export type { 
   FileServiceConfig, 
-  FileServiceStats, 
-  FileMetadataForWASM 
+  FileServiceStats
 } from './file-service.js';
 
 // Utilities

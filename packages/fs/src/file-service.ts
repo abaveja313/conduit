@@ -1,4 +1,3 @@
-// @ts-expect-error - WASM module will be available after build
 import * as wasm from '@conduit/wasm';
 import type { FileMetadata } from './types.js';
 import { FileScanner } from './scanner.js';
@@ -48,8 +47,14 @@ export class FileService {
 
     // Initialize WASM once
     if (!this.initialized) {
-      await wasm.default();
-      wasm.init();
+      // Check if wasm is already initialized globally
+      try {
+        wasm.ping(); // Test if WASM is ready
+      } catch {
+        // If not initialized, do it now
+        await wasm.default();
+        wasm.init();
+      }
       this.initialized = true;
     }
 
@@ -70,7 +75,6 @@ export class FileService {
         directory: directoryHandle.name
       });
     }
-
     logger.info(`Scanned ${this.metadata.size} files, loading to WASM...`);
 
     // Load to WASM

@@ -10,7 +10,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@conduit/fs": "workspace:*",
     "@conduit/shared": "workspace:*",
+    "@conduit/wasm": "workspace:*",
     "@mcp-b/transports": "^1.0.3",
     "@modelcontextprotocol/sdk": "^1.18.0",
     "next": "15.5.3",

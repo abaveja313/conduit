@@ -1,6 +1,10 @@
 default:
     @just --list
 
+# Quick start recipes
+quick-start: start-fresh
+run: start
+
 ci: install lint audit test build
 
 install:
@@ -26,9 +30,7 @@ audit:
 
 check:
     cargo check --workspace --all-targets
-    # Type checking for TypeScript packages
-    @echo "Checking TypeScript types..."
-    @find . -name "tsconfig.json" -not -path "*/node_modules/*" -not -path "*/.next/*" -not -path "*/dist/*" -execdir sh -c 'echo "Checking $(pwd)..." && npx tsc --noEmit' \;
+    pnpm turbo run type-check
 
 test:
     cargo test --workspace --locked
@@ -53,25 +55,53 @@ build-rust:
 
 build-wasm:
     wasm-pack build crates/conduit-wasm --target web --out-dir ../../packages/wasm/pkg
+    @echo "Copying WASM file to web app..."
+    @mkdir -p apps/web/public/workers
+    @cp packages/wasm/pkg/conduit_wasm_bg.wasm apps/web/public/workers/conduit.wasm
 
 build-node:
     pnpm turbo run build
 
+# Build production versions of everything
 release:
+    @echo "Building production release..."
     cargo build --release --workspace
     wasm-pack build crates/conduit-wasm --target web --out-dir ../../packages/wasm/pkg --release
-    pnpm turbo run build -- --mode production
+    @echo "Copying WASM file to web app..."
+    @mkdir -p apps/web/public/workers
+    @cp packages/wasm/pkg/conduit_wasm_bg.wasm apps/web/public/workers/conduit.wasm
+    pnpm turbo run build
+    @echo "Production build complete!"
+    @echo "- Rust binaries in target/release/"
+    @echo "- WASM module in packages/wasm/pkg/"
+    @echo "- Web app in apps/web/.next/"
 
+# Prepare the app with all necessary builds and start the dev server
+prepare:
+    @echo "Installing dependencies..."
+    pnpm install
+    @echo "Building WASM module..."
+    @just build-wasm
+    @echo "Building TypeScript packages..."
+    pnpm --filter="!web" run build
+    @echo "App is ready! Run 'just start' to launch the dev server."
+
+# Start the web app in development mode (assumes prepare has been run)
+start:
+    @echo "Starting web app on http://localhost:3000..."
+    cd apps/web && pnpm dev
+
+# Build and start in one command
+start-fresh: prepare start
+
+# Run development servers (TypeScript packages in watch mode)
 dev:
-    #!/usr/bin/env bash
-    trap 'kill %1' INT
-    cargo watch -x run &
     pnpm turbo run dev
-    wait
 
 clean:
     cargo clean
     rm -rf .turbo node_modules dist packages/wasm/pkg
+    rm -rf apps/web/.next apps/web/public/workers/*.wasm
 
 update:
     cargo update

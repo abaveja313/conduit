@@ -27,23 +27,17 @@ Conduit uses the File System Access API, so it works only in browsers that imple
 
 ## Usage
 
-Prereqs: Rust (stable) + Cargo, Node 18+ (npm or pnpm), and the `wasm32-unknown-unknown` target.
+Prerequisites: Rust, Node.js 18+, pnpm, wasm-pack, just
 
 ```bash
-# one-time Rust target for WASM
-rustup target add wasm32-unknown-unknown
-
-# clone
+# Setup
 git clone https://github.com/abaveja313/conduit.git
 cd conduit
+rustup target add wasm32-unknown-unknown
 
-# install JS deps (choose one)
-pnpm i || npm i
-
-# build Rust crates
-cargo build -p conduit-core
-cargo build -p conduit-wasm --target wasm32-unknown-unknown --release
-
-# start the dev app
-pnpm dev || npm run dev
+# Run
+just prepare  # Install deps and build WASM
+just start    # Start dev server
 ```
+
+App runs at http://localhost:3000
