@@ -167,4 +167,21 @@ impl Index {
             })
             .filter_map(move |k| self.get_file(k).map(|file| (k.clone(), file)))
     }
+
+    /// Get the total number of files in the index.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.files.len()
+    }
+
+    /// Check if the index is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+
+    /// Iterator over all files.
+    pub fn iter(&self) -> impl Iterator<Item = (&PathKey, &FileEntry)> {
+        self.files.iter()
+    }
 }

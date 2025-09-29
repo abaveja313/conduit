@@ -1,41 +1,41 @@
+// @ts-expect-error - WASM module will be available after build
+import * as wasm from '@conduit/wasm';
 import type { FileMetadata } from './types.js';
 import { FileScanner } from './scanner.js';
-import { createLogger, ConduitError, ErrorCodes, wrapError } from '@conduit/shared';
+import { createLogger, ErrorCodes, wrapError } from '@conduit/shared';
 import pLimit from 'p-limit';
 
 const logger = createLogger('file-service');
 
 export interface FileServiceConfig {
   concurrency?: number; // Parallel file operations (default: 10)
+  batchSize?: number; // Files per batch for WASM loading (default: 100)
+  onProgress?: (loaded: number, total: number) => void; // Progress callback
 }
 
 export interface FileServiceStats {
   filesScanned: number;
+  filesLoaded: number;
   duration: number;
   totalSize: number;
 }
 
-export interface FileMetadataForWASM {
-  paths: string[];
-  sizes: Uint32Array;
-  extensions: string[];
-}
-
 /**
- * FileService acts as a thin coordination layer between File System Access API and WASM.
- * It does not cache any file content - all caching is done in WASM.
+ * FileService loads files from File System Access API into WASM index.
+ * All file content is loaded upfront and stored in WASM for fast searching.
  */
 export class FileService {
   private metadata = new Map<string, FileMetadata>();
   private handles = new Map<string, FileSystemFileHandle>();
   private limit: ReturnType<typeof pLimit>;
+  private initialized = false;
 
-  constructor(config: FileServiceConfig = {}) {
-    this.limit = pLimit(config.concurrency ?? 10);
+  constructor(private config: FileServiceConfig = {}) {
+    this.limit = pLimit(this.config.concurrency ?? 10);
   }
 
   /**
-   * Initialize the service by scanning a directory for metadata
+   * Initialize the service by scanning and loading all files to WASM
    */
   async initialize(
     directoryHandle: FileSystemDirectoryHandle,
@@ -45,9 +45,17 @@ export class FileService {
     }
   ): Promise<FileServiceStats> {
     const startTime = performance.now();
-    const scanner = new FileScanner();
 
+    // Initialize WASM once
+    if (!this.initialized) {
+      await wasm.default();
+      wasm.init();
+      this.initialized = true;
+    }
+
+    // Scan files
     logger.info('Starting file system scan');
+    const scanner = new FileScanner();
 
     try {
       for await (const file of scanner.scan(directoryHandle, scanOptions)) {
@@ -63,111 +71,77 @@ export class FileService {
       });
     }
 
+    logger.info(`Scanned ${this.metadata.size} files, loading to WASM...`);
+
+    // Load to WASM
+    await this.loadToWasm();
+
     const stats: FileServiceStats = {
       filesScanned: this.metadata.size,
+      filesLoaded: wasm.file_count(),
       duration: performance.now() - startTime,
       totalSize: Array.from(this.metadata.values()).reduce((sum, f) => sum + f.size, 0)
     };
 
-    logger.info('File system scan complete', stats);
+    logger.info('File initialization complete', stats);
     return stats;
   }
 
   /**
-   * Get all metadata formatted for efficient transfer to WASM
+   * Load all scanned files to WASM index
    */
-  getMetadataForWASM(): FileMetadataForWASM {
-    const paths: string[] = [];
-    const sizes: number[] = [];
-    const extensions: string[] = [];
+  private async loadToWasm(): Promise<void> {
+    const paths = Array.from(this.handles.keys());
+    const batchSize = this.config.batchSize ?? 100;
 
-    for (const [path, meta] of this.metadata) {
-      paths.push(path);
-      sizes.push(meta.size);
-      extensions.push(path.split('.').pop()?.toLowerCase() || '');
+    wasm.begin_file_load();
+
+    try {
+      for (let i = 0; i < paths.length; i += batchSize) {
+        const batch = paths.slice(i, i + batchSize);
+
+        // Load contents in parallel
+        const contents = await Promise.all(
+          batch.map(path =>
+            this.limit(async () => {
+              try {
+                const handle = this.handles.get(path)!;
+                const file = await handle.getFile();
+                const buffer = await file.arrayBuffer();
+                return new Uint8Array(buffer);
+              } catch (error) {
+                logger.warn(`Failed to load ${path}:`, error);
+                return new Uint8Array(0);
+              }
+            })
+          )
+        );
+
+        // Prepare for WASM
+        const normalizedPaths = batch.map(p =>
+          p.replace(/\\/g, '/')
+            .replace(/\/+/g, '/')
+            .replace(/^\.\//, '')
+            .replace(/\/$/, '') || '/'
+        );
+        const timestamps = batch.map(p =>
+          this.metadata.get(p)?.lastModified ?? Date.now()
+        );
+
+        // Load batch (contents is Uint8Array[] - wasm-bindgen will handle conversion)
+        wasm.load_file_batch(normalizedPaths, contents, timestamps);
+
+        // Progress callback
+        this.config.onProgress?.(Math.min(i + batchSize, paths.length), paths.length);
+      }
+
+      wasm.commit_file_load();
+    } catch (error) {
+      wasm.abort_file_load();
+      throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, { operation: 'load_to_wasm' });
     }
-
-    return {
-      paths,
-      sizes: new Uint32Array(sizes),
-      extensions
-    };
   }
 
-  /**
-   * Load multiple files efficiently with concurrency control
-   */
-  async loadFiles(paths: string[]): Promise<ArrayBuffer[]> {
-    logger.debug(`Loading ${paths.length} files`);
-
-    const results = await Promise.all(
-      paths.map((path) =>
-        this.limit(async () => {
-          try {
-            const handle = this.handles.get(path);
-            if (!handle) {
-              throw new ConduitError(
-                `No handle for file: ${path}`,
-                ErrorCodes.FILE_ACCESS_ERROR,
-                { path }
-              );
-            }
-
-            const file = await handle.getFile();
-            return file.arrayBuffer();
-          } catch (error) {
-            // Log but don't throw - return empty buffer to maintain array alignment
-            logger.error('Failed to load file', { path, error });
-            return new ArrayBuffer(0);
-          }
-        })
-      )
-    );
-
-    return results;
-  }
-
-  /**
-   * Write multiple files efficiently
-   */
-  async writeFiles(updates: Array<{ path: string; content: ArrayBuffer }>): Promise<void> {
-    logger.debug(`Writing ${updates.length} files`);
-
-    await Promise.all(
-      updates.map(({ path, content }) =>
-        this.limit(async () => {
-          const handle = this.handles.get(path);
-          if (!handle) {
-            throw new ConduitError(
-              `No handle for file: ${path}`,
-              ErrorCodes.FILE_ACCESS_ERROR,
-              { path }
-            );
-          }
-
-          const writable = await handle.createWritable();
-          try {
-            await writable.write(content);
-            await writable.close();
-
-            const file = await handle.getFile();
-            const meta = this.metadata.get(path);
-            if (meta) {
-              meta.size = file.size;
-              meta.lastModified = file.lastModified;
-            }
-          } catch (error) {
-            await writable.close();
-            throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
-              path,
-              operation: 'write',
-              size: content.byteLength
-            });
-          }
-        })
-      )
-    );
-  }
 
   /**
    * Get metadata for a specific file
