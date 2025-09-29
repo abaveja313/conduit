@@ -1,6 +1,0 @@
-{
-  "crate": "conduit-wasm",
-  "target": "wasm32-unknown-unknown",
-  "mode": "release",
-  "hash_sha256": "bd120f750b86748c0740aca8389afb38e6fe971600f84773248448590391d0b7"
-}
