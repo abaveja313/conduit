@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { FileService, FileScanner } from '@conduit/fs';
-import type { FileServiceStats, ScanOptions } from '@conduit/fs';
+import type { FileServiceStats, ScanOptions, FileMetadata } from '@conduit/fs';
 
 interface FileInfo {
     path: string;
@@ -11,17 +11,17 @@ interface FileInfo {
 }
 
 interface ScanProgress {
-  current: number;
-  total: number;
-  percentage: number;
+    current: number;
+    total: number;
+    percentage: number;
 }
 
 type WasmModule = typeof import('@conduit/wasm');
 
 export default function FileUploader() {
-  const [wasmReady, setWasmReady] = useState(false);
-  const [fileService, setFileService] = useState<FileService | null>(null);
-  const [wasmModule, setWasmModule] = useState<WasmModule | null>(null);
+    const [wasmReady, setWasmReady] = useState(false);
+    const [fileService, setFileService] = useState<FileService | null>(null);
+    const [wasmModule, setWasmModule] = useState<WasmModule | null>(null);
     const [scanning, setScanning] = useState(false);
     const [stats, setStats] = useState<FileServiceStats | null>(null);
     const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
@@ -31,8 +31,8 @@ export default function FileUploader() {
     const [accessMode, setAccessMode] = useState<'read' | 'readwrite'>('read');
     const [excludePatterns, setExcludePatterns] = useState<string[]>(['node_modules', '.git', 'dist', 'build', '.next']);
     const [includePatterns, setIncludePatterns] = useState<string[]>([]);
-    const [newExcludePattern, setNewExcludePattern] = useState('');
-    const [newIncludePattern, setNewIncludePattern] = useState('');
+    const [searchResults, setSearchResults] = useState<FileMetadata[]>([]);
+    const [showResults, setShowResults] = useState(false);
 
     // Initialize FileService and WASM
     useEffect(() => {
@@ -165,12 +165,11 @@ export default function FileUploader() {
 
             if (results.length === 0) {
                 alert('No files found matching the pattern');
+                setSearchResults([]);
+                setShowResults(false);
             } else {
-                const displayResults = results.slice(0, 20).map(m => m.path).join('\n');
-                const message = results.length > 20
-                    ? `Found ${results.length} files (showing first 20):\n\n${displayResults}\n\n...and ${results.length - 20} more`
-                    : `Found ${results.length} files:\n\n${displayResults}`;
-                alert(message);
+                setSearchResults(results.slice(0, 100)); // Show first 100 results
+                setShowResults(true);
             }
         } catch (err) {
             setError(`Search failed: ${err}`);
@@ -189,27 +188,6 @@ Modified: ${new Date(metadata.lastModified).toLocaleString()}
 ${metadata.handle ? 'Handle: Available for reading' : 'Handle: Not available'}`);
     };
 
-    const addExcludePattern = () => {
-        if (newExcludePattern.trim() && !excludePatterns.includes(newExcludePattern.trim())) {
-            setExcludePatterns([...excludePatterns, newExcludePattern.trim()]);
-            setNewExcludePattern('');
-        }
-    };
-
-    const removeExcludePattern = (pattern: string) => {
-        setExcludePatterns(excludePatterns.filter(p => p !== pattern));
-    };
-
-    const addIncludePattern = () => {
-        if (newIncludePattern.trim() && !includePatterns.includes(newIncludePattern.trim())) {
-            setIncludePatterns([...includePatterns, newIncludePattern.trim()]);
-            setNewIncludePattern('');
-        }
-    };
-
-    const removeIncludePattern = (pattern: string) => {
-        setIncludePatterns(includePatterns.filter(p => p !== pattern));
-    };
 
     const clearAll = async () => {
         if (!confirm('This will clear the current session. Are you sure?')) return;
@@ -324,127 +302,34 @@ ${metadata.handle ? 'Handle: Available for reading' : 'Handle: Not available'}`)
                     </div>
                 </div>
 
-                {/* Pattern Filters */}
-                <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                    <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium">File Filters</span>
-                            <button
-                                onClick={() => {
-                                    setExcludePatterns([]);
-                                    setIncludePatterns([]);
+                {/* Pattern Filters - Compact */}
+                <div className="mb-4 p-2 bg-gray-50 dark:bg-gray-900 rounded text-sm">
+                    <div className="flex gap-4">
+                        <div className="flex-1">
+                            <label className="text-xs text-gray-600 dark:text-gray-400">Exclude:</label>
+                            <input
+                                type="text"
+                                value={excludePatterns.join(' ')}
+                                onChange={(e) => {
+                                    const patterns = e.target.value.split(' ').filter(p => p.trim());
+                                    setExcludePatterns(patterns);
                                 }}
-                                className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                            >
-                                Clear all filters
-                            </button>
+                                placeholder="node_modules .git dist build .next"
+                                className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+                            />
                         </div>
-                        {/* Exclude Patterns */}
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Exclude Patterns</label>
-                            <div className="flex gap-2 mb-2">
-                                <input
-                                    type="text"
-                                    value={newExcludePattern}
-                                    onChange={(e) => setNewExcludePattern(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && addExcludePattern()}
-                                    placeholder="e.g., *.log, temp/*, .env"
-                                    className="flex-1 px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
-                                />
-                                <button
-                                    onClick={addExcludePattern}
-                                    className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
-                                >
-                                    Add
-                                </button>
-                            </div>
-                            {/* Quick presets */}
-                            <div className="flex gap-1 mb-2">
-                                <span className="text-xs text-gray-500 mr-2">Quick add:</span>
-                                {['*.log', '*.tmp', '.DS_Store', '*.cache', 'coverage'].map((preset) => (
-                                    <button
-                                        key={preset}
-                                        onClick={() => !excludePatterns.includes(preset) && setExcludePatterns([...excludePatterns, preset])}
-                                        disabled={excludePatterns.includes(preset)}
-                                        className="px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {preset}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {excludePatterns.map((pattern) => (
-                                    <span
-                                        key={pattern}
-                                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full"
-                                    >
-                                        {pattern}
-                                        <button
-                                            onClick={() => removeExcludePattern(pattern)}
-                                            className="ml-1 hover:text-red-900 dark:hover:text-red-200"
-                                        >
-                                            ×
-                                        </button>
-                                    </span>
-                                ))}
-                                {excludePatterns.length === 0 && (
-                                    <span className="text-xs text-gray-500">No exclude patterns</span>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Include Patterns */}
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Include Patterns (Optional)</label>
-                            <div className="flex gap-2 mb-2">
-                                <input
-                                    type="text"
-                                    value={newIncludePattern}
-                                    onChange={(e) => setNewIncludePattern(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && addIncludePattern()}
-                                    placeholder="e.g., *.ts, src/**, *.json"
-                                    className="flex-1 px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
-                                />
-                                <button
-                                    onClick={addIncludePattern}
-                                    className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
-                                >
-                                    Add
-                                </button>
-                            </div>
-                            {/* Quick presets */}
-                            <div className="flex gap-1 mb-2">
-                                <span className="text-xs text-gray-500 mr-2">Quick add:</span>
-                                {['*.ts', '*.tsx', '*.js', '*.jsx', '*.json', '*.md', 'src/**'].map((preset) => (
-                                    <button
-                                        key={preset}
-                                        onClick={() => !includePatterns.includes(preset) && setIncludePatterns([...includePatterns, preset])}
-                                        disabled={includePatterns.includes(preset)}
-                                        className="px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {preset}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {includePatterns.map((pattern) => (
-                                    <span
-                                        key={pattern}
-                                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full"
-                                    >
-                                        {pattern}
-                                        <button
-                                            onClick={() => removeIncludePattern(pattern)}
-                                            className="ml-1 hover:text-green-900 dark:hover:text-green-200"
-                                        >
-                                            ×
-                                        </button>
-                                    </span>
-                                ))}
-                                {includePatterns.length === 0 && (
-                                    <span className="text-xs text-gray-500">All files (no filter)</span>
-                                )}
-                            </div>
+                        <div className="flex-1">
+                            <label className="text-xs text-gray-600 dark:text-gray-400">Include (optional):</label>
+                            <input
+                                type="text"
+                                value={includePatterns.join(' ')}
+                                onChange={(e) => {
+                                    const patterns = e.target.value.split(' ').filter(p => p.trim());
+                                    setIncludePatterns(patterns);
+                                }}
+                                placeholder="*.ts *.tsx src/**"
+                                className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+                            />
                         </div>
                     </div>
                 </div>
@@ -551,10 +436,60 @@ ${metadata.handle ? 'Handle: Available for reading' : 'Handle: Not available'}`)
                     <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
                         <h3 className="font-semibold mb-2">Scan Statistics</h3>
                         <div className="grid grid-cols-2 gap-2 text-sm">
-                            <div>Files Scanned: <span className="font-mono">{stats.filesScanned}</span></div>
-                            <div>Files Loaded: <span className="font-mono">{stats.filesLoaded}</span></div>
+                            <div>Text Files Scanned: <span className="font-mono">{stats.filesScanned}</span></div>
+                            <div>Files Loaded to WASM: <span className="font-mono">{stats.filesLoaded}</span></div>
                             <div>Total Size: <span className="font-mono">{(stats.totalSize / 1024 / 1024).toFixed(2)} MB</span></div>
                             <div>Duration: <span className="font-mono">{(stats.duration / 1000).toFixed(2)}s</span></div>
+                        </div>
+                        <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs text-blue-700 dark:text-blue-300">
+                            <strong>Note:</strong> Scanner is configured to only accept text files (source code, config files, markdown, etc.)
+                        </div>
+                    </div>
+                )}
+
+                {/* Search Results with MIME Types */}
+                {showResults && searchResults.length > 0 && (
+                    <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="font-semibold">Search Results ({searchResults.length} text files)</h3>
+                            <button
+                                onClick={() => setShowResults(false)}
+                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="max-h-96 overflow-y-auto">
+                            <table className="w-full text-sm">
+                                <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800">
+                                    <tr>
+                                        <th className="text-left p-2">File Path</th>
+                                        <th className="text-left p-2">MIME Type</th>
+                                        <th className="text-right p-2">Size</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {searchResults.map((file, idx) => (
+                                        <tr key={idx} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">
+                                            <td className="p-2 font-mono text-xs truncate max-w-md" title={file.path}>
+                                                {file.path}
+                                            </td>
+                                            <td className="p-2 text-xs">
+                                                <span className={`inline-block px-2 py-1 rounded ${file.mimeType?.startsWith('text/') ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                                    file.mimeType?.includes('json') ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                                                        file.mimeType?.includes('javascript') || file.mimeType?.includes('typescript') ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                                                            'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                                                    }`}>
+                                                    {file.mimeType || 'unknown'}
+                                                </span>
+                                            </td>
+                                            <td className="p-2 text-right font-mono text-xs">
+                                                {(file.size / 1024).toFixed(1)} KB
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}

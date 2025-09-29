@@ -23,13 +23,15 @@ export function begin_file_load(): void;
  * @param paths - File paths (will be normalized internally)
  * @param contents - Array of Uint8Arrays with file contents
  * @param mtimes - Last modified timestamps (JavaScript milliseconds since epoch)
+ * @param mime_types - MIME types for each file (empty string if unknown)
  * @returns Number of files loaded in this batch
  * @throws {Error} If array lengths don't match or paths are invalid
  */
 export function load_file_batch(
     paths: string[],
     contents: Array<ArrayBuffer | Uint8Array | string>, // js_sys::Array
-    mtimes: number[]
+    mtimes: number[],
+    mime_types: string[]
 ): number;
 
 /**

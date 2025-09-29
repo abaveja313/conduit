@@ -55,16 +55,18 @@ pub fn load_file_batch(
     paths: Vec<String>,
     contents: js_sys::Array, // Array of Uint8Arrays
     mtimes: Vec<f64>,        // JS timestamps are always f64
+    mime_types: Vec<String>, // MIME types from JS (empty string if unknown)
 ) -> Result<usize, JsValue> {
     // Validate input arrays have same length
     let len = paths.len();
     let contents_len = contents.length() as usize;
-    if contents_len != len || mtimes.len() != len {
+    if contents_len != len || mtimes.len() != len || mime_types.len() != len {
         return Err(js_err!(
-            "Array length mismatch: paths={}, contents={}, mtimes={}",
+            "Array length mismatch: paths={}, contents={}, mtimes={}, mime_types={}",
             paths.len(),
             contents_len,
-            mtimes.len()
+            mtimes.len(),
+            mime_types.len()
         ));
     }
 
@@ -102,7 +104,16 @@ pub fn load_file_batch(
 
         // Convert Vec directly to Arc<[u8]> without extra copy
         let content_arc: Arc<[u8]> = content_vec.into();
-        let entry = FileEntry::from_bytes_and_path(&path_key, mtime_secs, content_arc);
+
+        // Use MIME type if provided (non-empty), otherwise None
+        let mime_type = if !mime_types[i].is_empty() {
+            Some(mime_types[i].clone())
+        } else {
+            None
+        };
+
+        let ext = FileEntry::get_extension(path_key.as_str());
+        let entry = FileEntry::from_bytes_with_mime(ext, mime_type, mtime_secs, content_arc);
 
         entries.push((path_key, entry));
     }

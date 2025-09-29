@@ -3,6 +3,7 @@ import type { FileMetadata } from './types.js';
 import { FileScanner } from './scanner.js';
 import { createLogger, ErrorCodes, wrapError } from '@conduit/shared';
 import pLimit from 'p-limit';
+import { fileTypeFromBuffer } from 'file-type';
 
 const logger = createLogger('file-service');
 
@@ -92,6 +93,34 @@ export class FileService {
   }
 
   /**
+   * Detect MIME type from file content, browser type, or default to binary.
+   */
+  private async detectMimeType(
+    file: File | Blob,
+    browserMimeType?: string
+  ): Promise<string> {
+    try {
+      // For files with content, attempt magic byte detection
+      if (file.size > 0) {
+        // Read up to 4100 bytes for detection (file-type requirement)
+        const slice = file.size > 4100 ? file.slice(0, 4100) : file;
+        const buffer = await slice.arrayBuffer();
+        const detected = await fileTypeFromBuffer(new Uint8Array(buffer));
+
+        if (detected?.mime) {
+          return detected.mime;
+        }
+      }
+    } catch (error) {
+      // Silently fall back on error
+      console.debug('Content-based MIME detection failed:', error);
+    }
+
+    // Use browser type if available and not empty, otherwise binary
+    return browserMimeType || file.type || 'application/octet-stream';
+  }
+
+  /**
    * Load all scanned files to WASM index
    */
   private async loadToWasm(): Promise<void> {
@@ -104,22 +133,37 @@ export class FileService {
       for (let i = 0; i < paths.length; i += batchSize) {
         const batch = paths.slice(i, i + batchSize);
 
-        // Load contents in parallel
-        const contents = await Promise.all(
+        // Load contents and detect MIME types in parallel
+        const results = await Promise.all(
           batch.map(path =>
             this.limit(async () => {
               try {
                 const handle = this.handles.get(path)!;
                 const file = await handle.getFile();
                 const buffer = await file.arrayBuffer();
-                return new Uint8Array(buffer);
+                const metadata = this.metadata.get(path);
+
+                // Detect MIME type
+                const mimeType = await this.detectMimeType(file, metadata?.mimeType);
+
+                return {
+                  content: new Uint8Array(buffer),
+                  mimeType
+                };
               } catch (error) {
                 logger.warn(`Failed to load ${path}:`, error);
-                return new Uint8Array(0);
+                return {
+                  content: new Uint8Array(0),
+                  mimeType: ''
+                };
               }
             })
           )
         );
+
+        // Separate contents and MIME types
+        const contents = results.map(r => r.content);
+        const mimeTypes = results.map(r => r.mimeType);
 
         // Prepare for WASM
         const normalizedPaths = batch.map(p =>
@@ -132,8 +176,8 @@ export class FileService {
           this.metadata.get(p)?.lastModified ?? Date.now()
         );
 
-        // Load batch (contents is Uint8Array[] - wasm-bindgen will handle conversion)
-        wasm.load_file_batch(normalizedPaths, contents, timestamps);
+        // Load batch with MIME types (contents is Uint8Array[] - wasm-bindgen will handle conversion)
+        wasm.load_file_batch(normalizedPaths, contents, timestamps, mimeTypes);
 
         // Progress callback
         this.config.onProgress?.(Math.min(i + batchSize, paths.length), paths.length);

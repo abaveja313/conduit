@@ -278,6 +278,31 @@ export class FileScanner {
               continue;
             }
 
+            // TEMPORARY: Only accept text files
+            const isTextFile = file.type.startsWith('text/') ||
+              file.type === 'application/json' ||
+              file.type === 'application/javascript' ||
+              file.type === 'application/typescript' ||
+              file.type === 'application/xml' ||
+              file.type === '' && (
+                name.endsWith('.txt') || name.endsWith('.md') ||
+                name.endsWith('.ts') || name.endsWith('.tsx') ||
+                name.endsWith('.js') || name.endsWith('.jsx') ||
+                name.endsWith('.json') || name.endsWith('.css') ||
+                name.endsWith('.html') || name.endsWith('.xml') ||
+                name.endsWith('.yaml') || name.endsWith('.yml') ||
+                name.endsWith('.toml') || name.endsWith('.rs') ||
+                name.endsWith('.go') || name.endsWith('.py') ||
+                name.endsWith('.java') || name.endsWith('.cpp') ||
+                name.endsWith('.c') || name.endsWith('.h') ||
+                name.endsWith('.sh') || name.endsWith('.bash')
+              );
+
+            if (!isTextFile) {
+              console.log(`DEBUG Scanner: Skipping non-text file: ${entryPath} (type: ${file.type || 'unknown'})`);
+              continue;
+            }
+
             const metadata: FileMetadata = {
               path: entryPath,
               name,

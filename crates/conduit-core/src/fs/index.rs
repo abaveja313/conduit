@@ -12,6 +12,7 @@ use crate::fs::PathKey;
 #[derive(Debug, Clone)]
 pub struct FileEntry {
     ext: String,
+    mime_type: Option<String>,
     size: u64,
     mtime: i64, // unix epoch
     bytes: Option<Arc<[u8]>>,
@@ -42,6 +43,7 @@ impl FileEntry {
     pub fn new(ext: impl Into<String>, size: u64, mtime: i64) -> Self {
         Self {
             ext: ext.into(),
+            mime_type: None,
             size,
             mtime,
             bytes: None,
@@ -53,11 +55,28 @@ impl FileEntry {
         Self::new(Self::get_extension(path.as_str()), size, mtime)
     }
 
+    /// Create metadata-only entry with MIME type.
+    pub fn new_with_mime(
+        ext: impl Into<String>,
+        mime_type: impl Into<String>,
+        size: u64,
+        mtime: i64,
+    ) -> Self {
+        Self {
+            ext: ext.into(),
+            mime_type: Some(mime_type.into()),
+            size,
+            mtime,
+            bytes: None,
+        }
+    }
+
     /// Create entry with content.
     pub fn from_bytes(ext: impl Into<String>, mtime: i64, bytes: Arc<[u8]>) -> Self {
         let size = bytes.len() as u64;
         Self {
             ext: ext.into(),
+            mime_type: None,
             size,
             mtime,
             bytes: Some(bytes),
@@ -67,6 +86,23 @@ impl FileEntry {
     /// Create entry with content from a path.
     pub fn from_bytes_and_path(path: &PathKey, mtime: i64, bytes: Arc<[u8]>) -> Self {
         Self::from_bytes(Self::get_extension(path.as_str()), mtime, bytes)
+    }
+
+    /// Create entry with content and MIME type.
+    pub fn from_bytes_with_mime(
+        ext: impl Into<String>,
+        mime_type: Option<String>,
+        mtime: i64,
+        bytes: Arc<[u8]>,
+    ) -> Self {
+        let size = bytes.len() as u64;
+        Self {
+            ext: ext.into(),
+            mime_type,
+            size,
+            mtime,
+            bytes: Some(bytes),
+        }
     }
 
     /// Replace content, optionally updating mtime.
@@ -91,6 +127,11 @@ impl FileEntry {
     /// File extension.
     pub fn ext(&self) -> &str {
         &self.ext
+    }
+
+    /// MIME type if detected.
+    pub fn mime_type(&self) -> Option<&str> {
+        self.mime_type.as_deref()
     }
 
     /// Size in bytes.
