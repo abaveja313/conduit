@@ -90,6 +90,7 @@ dist
 
 # WASM build output
 **/pkg/
+artifacts/
 
 # Gatsby files
 .cache/
