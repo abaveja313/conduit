@@ -3,19 +3,58 @@ import type { FileMetadata } from './types.js';
 import { FileScanner } from './scanner.js';
 import { createLogger, ErrorCodes, wrapError } from '@conduit/shared';
 import pLimit from 'p-limit';
-import { fileTypeFromBuffer } from 'file-type';
 
 const logger = createLogger('file-service');
 
+/**
+ * Quick binary file detection
+ */
+export async function isBinaryFile(file: File): Promise<boolean> {
+  const ext = file.name.toLowerCase().split('.').pop() || '';
+
+  // Known text files - skip content check
+  const textExts = ['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts', 'jsx', 'tsx',
+    'py', 'java', 'c', 'cpp', 'h', 'cs', 'php', 'rb', 'go', 'rs',
+    'yml', 'yaml', 'toml', 'ini', 'sh', 'sql', 'csv', 'log', 'env'];
+  if (textExts.includes(ext)) return false;
+
+  // Known binary files - skip content check  
+  const binaryExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'svg',
+    'pdf', 'zip', 'tar', 'gz', 'rar', '7z', 'exe', 'dll', 'so',
+    'mp3', 'mp4', 'avi', 'mov', 'wav', 'flac', 'ogg', 'webm',
+    'ttf', 'otf', 'woff', 'woff2', 'eot', 'db', 'sqlite'];
+  if (binaryExts.includes(ext)) return true;
+
+  // Unknown extension - check content
+  const sample = new Uint8Array(await file.slice(0, 8192).arrayBuffer());
+
+  // Quick NUL byte check
+  if (sample.indexOf(0x00) !== -1) return true;
+
+  // UTF-8 validity check
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(sample);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 export interface FileServiceConfig {
-  concurrency?: number; // Parallel file operations (default: 10)
-  batchSize?: number; // Files per batch for WASM loading (default: 100)
-  onProgress?: (loaded: number, total: number) => void; // Progress callback
+  /** Parallel file operations limit (default: 10) */
+  concurrency?: number;
+  /** Files per batch for WASM loading (default: 100) */
+  batchSize?: number;
+  /** Progress callback for loading phase */
+  onProgress?: (loaded: number, total: number) => void;
+  /** Progress callback for scanning phase */
+  onScanProgress?: (filesFound: number, currentPath?: string, fileSize?: number) => void;
 }
 
 export interface FileServiceStats {
   filesScanned: number;
   filesLoaded: number;
+  binaryFilesSkipped: number;
   duration: number;
   totalSize: number;
 }
@@ -30,8 +69,16 @@ export class FileService {
   private limit: ReturnType<typeof pLimit>;
   private initialized = false;
 
-  constructor(private config: FileServiceConfig = {}) {
-    this.limit = pLimit(this.config.concurrency ?? 10);
+  private readonly defaultConfig: Required<Omit<FileServiceConfig, 'onProgress' | 'onScanProgress'>> = {
+    concurrency: 10,
+    batchSize: 1000,
+  };
+
+  private readonly config: FileServiceConfig;
+
+  constructor(config: FileServiceConfig = {}) {
+    this.config = { ...this.defaultConfig, ...config };
+    this.limit = pLimit(this.config.concurrency!);
   }
 
   /**
@@ -48,11 +95,9 @@ export class FileService {
 
     // Initialize WASM once
     if (!this.initialized) {
-      // Check if wasm is already initialized globally
       try {
         wasm.ping(); // Test if WASM is ready
       } catch {
-        // If not initialized, do it now
         await wasm.default();
         wasm.init();
       }
@@ -62,6 +107,15 @@ export class FileService {
     // Scan files
     logger.info('Starting file system scan');
     const scanner = new FileScanner();
+
+    // Track scanning progress
+    let filesFoundCount = 0;
+    scanner.on('file', (metadata) => {
+      if (metadata.type === 'file') {
+        filesFoundCount++;
+        this.config.onScanProgress?.(filesFoundCount, metadata.path, metadata.size);
+      }
+    });
 
     try {
       for await (const file of scanner.scan(directoryHandle, scanOptions)) {
@@ -79,11 +133,12 @@ export class FileService {
     logger.info(`Scanned ${this.metadata.size} files, loading to WASM...`);
 
     // Load to WASM
-    await this.loadToWasm();
+    const binaryFilesSkipped = await this.loadToWasm();
 
     const stats: FileServiceStats = {
       filesScanned: this.metadata.size,
       filesLoaded: wasm.file_count(),
+      binaryFilesSkipped,
       duration: performance.now() - startTime,
       totalSize: Array.from(this.metadata.values()).reduce((sum, f) => sum + f.size, 0)
     };
@@ -92,40 +147,14 @@ export class FileService {
     return stats;
   }
 
-  /**
-   * Detect MIME type from file content, browser type, or default to binary.
-   */
-  private async detectMimeType(
-    file: File | Blob,
-    browserMimeType?: string
-  ): Promise<string> {
-    try {
-      // For files with content, attempt magic byte detection
-      if (file.size > 0) {
-        // Read up to 4100 bytes for detection (file-type requirement)
-        const slice = file.size > 4100 ? file.slice(0, 4100) : file;
-        const buffer = await slice.arrayBuffer();
-        const detected = await fileTypeFromBuffer(new Uint8Array(buffer));
-
-        if (detected?.mime) {
-          return detected.mime;
-        }
-      }
-    } catch (error) {
-      // Silently fall back on error
-      console.debug('Content-based MIME detection failed:', error);
-    }
-
-    // Use browser type if available and not empty, otherwise binary
-    return browserMimeType || file.type || 'application/octet-stream';
-  }
 
   /**
    * Load all scanned files to WASM index
    */
-  private async loadToWasm(): Promise<void> {
+  private async loadToWasm(): Promise<number> {
     const paths = Array.from(this.handles.keys());
-    const batchSize = this.config.batchSize ?? 100;
+    const batchSize = this.config.batchSize!;
+    let binaryFilesSkipped = 0;
 
     wasm.begin_file_load();
 
@@ -140,50 +169,58 @@ export class FileService {
               try {
                 const handle = this.handles.get(path)!;
                 const file = await handle.getFile();
-                const buffer = await file.arrayBuffer();
-                const metadata = this.metadata.get(path);
 
-                // Detect MIME type
-                const mimeType = await this.detectMimeType(file, metadata?.mimeType);
+                // Check if file is binary before loading
+                const isBinary = await isBinaryFile(file);
+                if (isBinary) {
+                  logger.debug(`Skipping binary file: ${path}`);
+                  return null; // Skip binary files
+                }
+
+                const buffer = await file.arrayBuffer();
 
                 return {
-                  content: new Uint8Array(buffer),
-                  mimeType
+                  path,
+                  content: new Uint8Array(buffer)
                 };
               } catch (error) {
                 logger.warn(`Failed to load ${path}:`, error);
-                return {
-                  content: new Uint8Array(0),
-                  mimeType: ''
-                };
+                return null;
               }
             })
           )
         );
 
-        // Separate contents and MIME types
-        const contents = results.map(r => r.content);
-        const mimeTypes = results.map(r => r.mimeType);
+        // Filter out null results (binary files)
+        const validResults = results.filter((r): r is NonNullable<typeof r> => r !== null);
+        binaryFilesSkipped += results.length - validResults.length;
 
-        // Prepare for WASM
-        const normalizedPaths = batch.map(p =>
-          p.replace(/\\/g, '/')
-            .replace(/\/+/g, '/')
-            .replace(/^\.\//, '')
-            .replace(/\/$/, '') || '/'
-        );
-        const timestamps = batch.map(p =>
-          this.metadata.get(p)?.lastModified ?? Date.now()
-        );
+        if (validResults.length > 0) {
+          // Extract data from valid results
+          const validPaths = validResults.map(r => r.path);
+          const contents = validResults.map(r => r.content);
 
-        // Load batch with MIME types (contents is Uint8Array[] - wasm-bindgen will handle conversion)
-        wasm.load_file_batch(normalizedPaths, contents, timestamps, mimeTypes);
+          // Prepare for WASM
+          const normalizedPaths = validPaths.map(p =>
+            p.replace(/\\/g, '/')
+              .replace(/\/+/g, '/')
+              .replace(/^\.\//, '')
+              .replace(/\/$/, '') || '/'
+          );
+          const timestamps = validPaths.map(p =>
+            this.metadata.get(p)?.lastModified ?? Date.now()
+          );
+
+          // Load batch (contents is Uint8Array[] - wasm-bindgen will handle conversion)
+          wasm.load_file_batch(normalizedPaths, contents, timestamps);
+        }
 
         // Progress callback
         this.config.onProgress?.(Math.min(i + batchSize, paths.length), paths.length);
       }
 
       wasm.commit_file_load();
+      return binaryFilesSkipped;
     } catch (error) {
       wasm.abort_file_load();
       throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, { operation: 'load_to_wasm' });

@@ -92,7 +92,7 @@ dist
 **/pkg/
 artifacts/
 
-# WASM files in web app (copied from build)
+# WASM files in web app (built by Vercel)
 apps/web/public/workers/*.wasm
 
 # Gatsby files

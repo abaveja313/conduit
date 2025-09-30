@@ -1,4 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Mock WASM module before any other imports
+vi.mock('@conduit/wasm', () => ({
+    default: vi.fn(() => Promise.resolve()),
+    init: vi.fn(),
+    ping: vi.fn(() => 'pong'),
+    file_count: vi.fn(() => 0),
+    get_index_stats: vi.fn(() => ({ files: 0 })),
+    begin_file_load: vi.fn(),
+    load_file_batch: vi.fn(),
+    commit_file_load: vi.fn(),
+    abort_file_load: vi.fn(),
+}));
+
 import { FileService } from '../file-service.js';
 import { FileScanner } from '../scanner.js';
 import { ConduitError } from '@conduit/shared';
@@ -13,6 +27,7 @@ vi.mock('@conduit/shared', async () => {
             info: vi.fn(),
             debug: vi.fn(),
             error: vi.fn(),
+            warn: vi.fn(),
         }),
     };
 });
@@ -92,7 +107,7 @@ describe('FileService', () => {
         });
     });
 
-    describe('loadFiles', () => {
+    describe('getMetadata', () => {
         beforeEach(async () => {
             const mockFiles = [
                 createMockFileMetadata('file1.ts', 100),
@@ -110,33 +125,30 @@ describe('FileService', () => {
             await fileService.initialize({} as FileSystemDirectoryHandle);
         });
 
-        it('should load files and return buffers', async () => {
-            const buffers = await fileService.loadFiles(['file1.ts', 'file2.ts']);
-
-            expect(buffers).toHaveLength(2);
-            expect(buffers[0]).toBeInstanceOf(ArrayBuffer);
-            expect(buffers[0].byteLength).toBe(100);
-            expect(buffers[1].byteLength).toBe(200);
+        it('should return metadata for existing files', () => {
+            const metadata = fileService.getMetadata('file1.ts');
+            expect(metadata).toBeDefined();
+            expect(metadata?.size).toBe(100);
+            expect(metadata?.name).toBe('file1.ts');
         });
 
-        it('should return empty buffer for missing files', async () => {
-            const buffers = await fileService.loadFiles(['file1.ts', 'missing.ts']);
-
-            expect(buffers[0].byteLength).toBe(100);
-            expect(buffers[1].byteLength).toBe(0);
+        it('should return undefined for non-existent files', () => {
+            const metadata = fileService.getMetadata('missing.ts');
+            expect(metadata).toBeUndefined();
         });
     });
 
-    describe('writeFiles', () => {
-        let mockFileHandle: FileSystemFileHandle;
-
+    describe('hasFile', () => {
         beforeEach(async () => {
-            mockFileHandle = createMockFileHandle('file1.ts', 100);
-            const mockFile = createMockFileMetadata('file1.ts', 100);
-            mockFile.handle = mockFileHandle;
+            const mockFiles = [
+                createMockFileMetadata('file1.ts', 100),
+                createMockFileMetadata('file2.ts', 200),
+            ];
 
             const mockScan = vi.fn().mockImplementation(async function* () {
-                yield mockFile;
+                for (const file of mockFiles) {
+                    yield file;
+                }
             });
 
             vi.mocked(FileScanner.prototype.scan).mockImplementation(mockScan);
@@ -144,29 +156,17 @@ describe('FileService', () => {
             await fileService.initialize({} as FileSystemDirectoryHandle);
         });
 
-        it('should write files and update metadata', async () => {
-            const getFileMock = vi.mocked(mockFileHandle.getFile);
-            getFileMock.mockResolvedValueOnce({
-                size: 150,
-                lastModified: Date.now(),
-                arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(150)),
-            } as File);
-
-            const newContent = new ArrayBuffer(150);
-            await fileService.writeFiles([{ path: 'file1.ts', content: newContent }]);
-
-            const meta = fileService.getMetadata('file1.ts');
-            expect(meta?.size).toBe(150);
+        it('should return true for existing files', () => {
+            expect(fileService.hasFile('file1.ts')).toBe(true);
+            expect(fileService.hasFile('file2.ts')).toBe(true);
         });
 
-        it('should throw for non-existent files', async () => {
-            await expect(
-                fileService.writeFiles([{ path: 'missing.ts', content: new ArrayBuffer(100) }])
-            ).rejects.toThrow(ConduitError);
+        it('should return false for non-existent files', () => {
+            expect(fileService.hasFile('missing.ts')).toBe(false);
         });
     });
 
-    describe('metadata access', () => {
+    describe('getAllMetadata and fileCount', () => {
         beforeEach(async () => {
             const mockFiles = [
                 createMockFileMetadata('src/index.ts', 1000),
@@ -184,12 +184,14 @@ describe('FileService', () => {
             await fileService.initialize({} as FileSystemDirectoryHandle);
         });
 
-        it('should provide metadata for WASM', () => {
-            const metadata = fileService.getMetadataForWASM();
+        it('should return all file metadata', () => {
+            const allMetadata = fileService.getAllMetadata();
+            expect(allMetadata).toHaveLength(2);
+            expect(allMetadata.map(m => m.path).sort()).toEqual(['src/index.ts', 'src/utils.ts']);
+        });
 
-            expect(metadata.paths).toEqual(['src/index.ts', 'src/utils.ts']);
-            expect(Array.from(metadata.sizes)).toEqual([1000, 2000]);
-            expect(metadata.extensions).toEqual(['ts', 'ts']);
+        it('should return correct file count', () => {
+            expect(fileService.fileCount).toBe(2);
         });
 
         it('should retrieve individual file metadata', () => {
