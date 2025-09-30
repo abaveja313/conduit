@@ -75,6 +75,7 @@ export default function FileUploader() {
         totalLines: number;
     } | null>(null);
     const [readError, setReadError] = useState<string | null>(null);
+    const codeContainerRef = useRef<HTMLElement | null>(null);
 
     // Modal states
     const [showStatsModal, setShowStatsModal] = useState(false);
@@ -107,6 +108,13 @@ export default function FileUploader() {
             }
         };
     }, [scanPhase, scanningStats.startTime]);
+
+    // Highlight code when readResult changes
+    useEffect(() => {
+        if (readResult && codeContainerRef.current) {
+            Prism.highlightElement(codeContainerRef.current);
+        }
+    }, [readResult]);
 
     // Initialize FileService and WASM
     useEffect(() => {
@@ -985,25 +993,23 @@ export default function FileUploader() {
                             </div>
 
                             <div className="relative bg-gray-900 rounded-lg overflow-hidden">
-                                <pre className="p-4 overflow-x-auto text-sm">
-                                    <code>
-                                        {readResult.content.split('\n').map((line, idx) => (
-                                            <div key={idx} className="flex hover:bg-gray-800">
-                                                <span className="inline-block w-12 text-right pr-4 text-gray-500 select-none border-r border-gray-700 mr-4">
-                                                    {readResult.startLine + idx}
-                                                </span>
-                                                <span
-                                                    className="flex-1 whitespace-pre"
-                                                    dangerouslySetInnerHTML={{
-                                                        __html: readPath.match(/\.(ts|tsx|js|jsx)$/)
-                                                            ? Prism.highlight(line || ' ', Prism.languages.typescript, 'typescript')
-                                                            : readPath.endsWith('.json')
-                                                                ? Prism.highlight(line || ' ', Prism.languages.json, 'json')
-                                                                : line || ' '
-                                                    }}
-                                                />
-                                            </div>
-                                        ))}
+                                <pre className="p-4 overflow-x-auto text-sm line-numbers">
+                                    <code
+                                        ref={codeContainerRef}
+                                        className={
+                                            readPath.match(/\.(ts|tsx)$/)
+                                                ? 'language-typescript'
+                                                : readPath.match(/\.(js|jsx)$/)
+                                                    ? 'language-javascript'
+                                                    : readPath.endsWith('.json')
+                                                        ? 'language-json'
+                                                        : 'language-plaintext'
+                                        }
+                                        style={{
+                                            counterReset: `linenumber ${readResult.startLine - 1}`
+                                        }}
+                                    >
+                                        {readResult.content}
                                     </code>
                                 </pre>
                             </div>

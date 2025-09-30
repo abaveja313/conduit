@@ -63,6 +63,16 @@ export function clear_index(): void;
 export function get_index_stats(): { fileCount: number };
 
 /**
+ * Read specific lines from a file in the index.
+ * @param path - File path to read from
+ * @param startLine - Starting line number (1-based)
+ * @param endLine - Ending line number (1-based, inclusive)
+ * @returns Array of lines from the file
+ * @throws {Error} If file not found or lines out of range
+ */
+export function read_file_lines(path: string, startLine: number, endLine: number): string[];
+
+/**
  * Default export for initializing the WASM module
  */
 export default function init(input?: string | RequestInfo | URL | Response | BufferSource | WebAssembly.Module): Promise<void>;

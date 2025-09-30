@@ -70,16 +70,13 @@ pub fn extract_lines(
         return Err(Error::InvalidRange(start_line, end_line));
     }
 
-    // Clamp end line to file bounds
     let actual_end = end_line.min(total_lines);
 
-    // Get byte range for the requested lines
     let byte_range = line_index
         .span_of_lines(start_line, actual_end)
         .ok_or(Error::InvalidRange(start_line, actual_end))?;
 
-    // Extract content
-    let content_bytes = &content[byte_range.to_range()];
+    let content_bytes: &[u8] = &content[byte_range.to_range()];
     let content = String::from_utf8_lossy(content_bytes).into_owned();
 
     Ok(ReadResponse {

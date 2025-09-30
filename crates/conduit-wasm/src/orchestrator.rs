@@ -63,9 +63,9 @@ impl Orchestrator {
             .ok_or_else(|| Error::InvalidPath(format!("File not found: {}", path.as_str())))?;
 
         // Get file content
-        let content = entry
-            .bytes()
-            .ok_or_else(|| Error::InvalidPath(format!("File has no content: {}", path.as_str())))?;
+        let content = entry.bytes().ok_or_else(|| {
+            Error::MissingContent(format!("File has no content: {}", path.as_str()))
+        })?;
 
         // Extract the requested lines
         extract_lines(path.clone(), content, start_line, end_line)

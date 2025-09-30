@@ -55,7 +55,7 @@ export class FileScanner {
     const opts = { ...this.defaultOptions, ...options };
 
     const startTime = performance.now();
-    const processedCount = 0;
+    const state = { processedCount: 0 };
 
     const shouldExclude = (path: string) => {
       return opts.exclude.length > 0 && picomatch.isMatch(path, opts.exclude);
@@ -72,7 +72,7 @@ export class FileScanner {
           0,
           opts,
           shouldExclude,
-          processedCount,
+          state,
           startTime,
         );
       }
@@ -100,7 +100,7 @@ export class FileScanner {
     depth: number,
     opts: Required<Omit<ScanOptions, 'fileFilter'>> & { fileFilter?: ScanOptions['fileFilter'] },
     shouldExclude: (path: string) => boolean,
-    processedCount: number,
+    state: { processedCount: number },
     startTime: number,
   ): AsyncGenerator<FileMetadata> {
     if (opts.signal?.aborted) {
@@ -176,7 +176,7 @@ export class FileScanner {
               depth + 1,
               opts,
               shouldExclude,
-              processedCount,
+              state,
               startTime,
             );
           }
@@ -198,14 +198,14 @@ export class FileScanner {
 
       // Yield metadata and emit events if we have metadata
       if (metadata) {
-        processedCount++;
+        state.processedCount++;
         yield metadata;
 
         // Emit events - these can throw but shouldn't stop scanning
         try {
           this.emitter.emit('file', metadata);
           this.emitter.emit('progress', {
-            processed: processedCount,
+            processed: state.processedCount,
             currentPath: entryPath,
           });
         } catch (eventError) {
@@ -218,7 +218,7 @@ export class FileScanner {
     // Emit complete event when done with root
     if (depth === 0) {
       this.emitter.emit('complete', {
-        processed: processedCount,
+        processed: state.processedCount,
         duration: Math.max(1, Math.round(performance.now() - startTime)),
       });
     }
@@ -282,19 +282,24 @@ export class FileScanner {
             processedCount++;
             this.emitter.emit('file', metadata);
           } else if (isDirectoryHandle(handle)) {
-            const metadata: FileMetadata = {
-              path: entryPath,
-              name,
-              size: 0,
-              type: 'directory',
-              lastModified: Date.now(),
-            };
-
-            results.push(metadata);
-            processedCount++;
-            this.emitter.emit('file', metadata);
-
-            queue.push({ handle, path: entryPath, depth: dir.depth + 1 });
+            if (dir.depth < opts.maxDepth) {
+              const metadata: FileMetadata = {
+                path: entryPath,
+                name,
+                size: 0,
+                type: 'directory',
+                lastModified: Date.now(),
+                handle,
+              };
+              results.push(metadata);
+              processedCount++;
+              try {
+                this.emitter.emit('file', metadata);
+              } catch (eventError) {
+                logger.error('Error in event listener', eventError);
+              }
+              queue.push({ handle, path: entryPath, depth: dir.depth + 1 });
+            }
           }
         } catch (error) {
           const wrappedError = wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
