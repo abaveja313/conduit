@@ -15,7 +15,7 @@
     "@conduit/wasm": "workspace:*",
     "@headlessui/react": "^2.2.9",
     "@mcp-b/transports": "^1.0.3",
-    "@modelcontextprotocol/sdk": "^1.18.0",
+    "@modelcontextprotocol/sdk": "^1.18.2",
     "@types/prismjs": "^1.26.5",
     "next": "15.5.3",
     "prismjs": "^1.30.0",
