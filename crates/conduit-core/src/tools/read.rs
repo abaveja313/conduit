@@ -66,7 +66,7 @@ pub fn extract_lines(
     let total_lines = line_index.line_count();
 
     // Validate and clamp line range
-    if start_line == 0 || start_line > total_lines {
+    if start_line == 0 || start_line > total_lines || start_line > end_line {
         return Err(Error::InvalidRange(start_line, end_line));
     }
 
