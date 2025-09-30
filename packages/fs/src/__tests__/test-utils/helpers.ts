@@ -106,9 +106,6 @@ export function assertFileMetadataEqual(
   expect(actual.path).toBe(expected.path);
   expect(actual.type).toBe(expected.type);
   expect(actual.size).toBe(expected.size);
-  if (expected.mimeType !== undefined) {
-    expect(actual.mimeType).toBe(expected.mimeType);
-  }
 }
 
 /**

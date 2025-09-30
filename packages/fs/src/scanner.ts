@@ -12,13 +12,14 @@ const logger = createLogger('file-scanner');
  */
 export class FileScanner {
   private emitter: Emitter<ScannerEvents>;
-  private readonly defaultOptions: Required<ScanOptions> = {
+  private readonly defaultOptions: Required<Omit<ScanOptions, 'fileFilter'>> & { fileFilter?: ScanOptions['fileFilter'] } = {
     exclude: [],
     maxDepth: Infinity,
     includeHidden: false,
     maxFileSize: Infinity,
-    concurrency: 1,
+    concurrency: 3,
     signal: new AbortController().signal,
+    fileFilter: undefined,
   };
 
   constructor() {
@@ -51,38 +52,27 @@ export class FileScanner {
       throw new Error('File System Access API is not supported in this browser');
     }
 
-    // DEBUG: Log scan start
-    console.log('DEBUG Scanner: Starting scan of', rootHandle.name);
-    console.log('DEBUG Scanner: Options received:', options);
-
     const opts = { ...this.defaultOptions, ...options };
-    console.log('DEBUG Scanner: Merged options:', opts);
 
     const startTime = performance.now();
-    const processedCount = 0;
+    const state = { processedCount: 0 };
 
     const shouldExclude = (path: string) => {
-      const isExcluded = opts.exclude.length > 0 && picomatch.isMatch(path, opts.exclude);
-      if (isExcluded) {
-        console.log('DEBUG Scanner: Excluding path:', path);
-      }
-      return isExcluded;
+      return opts.exclude.length > 0 && picomatch.isMatch(path, opts.exclude);
     };
 
     try {
       if (opts.concurrency > 1) {
-        console.log('DEBUG Scanner: Using concurrent scanning with concurrency:', opts.concurrency);
         logger.info('Using concurrent scanning', { concurrency: opts.concurrency });
         yield* this.scanConcurrent(rootHandle, opts, shouldExclude, startTime);
       } else {
-        console.log('DEBUG Scanner: Using sequential scanning');
         yield* this.scanSequential(
           rootHandle,
           '',
           0,
           opts,
           shouldExclude,
-          processedCount,
+          state,
           startTime,
         );
       }
@@ -108,9 +98,9 @@ export class FileScanner {
     dirHandle: FileSystemDirectoryHandle,
     parentPath: string,
     depth: number,
-    opts: Required<ScanOptions>,
+    opts: Required<Omit<ScanOptions, 'fileFilter'>> & { fileFilter?: ScanOptions['fileFilter'] },
     shouldExclude: (path: string) => boolean,
-    processedCount: number,
+    state: { processedCount: number },
     startTime: number,
   ): AsyncGenerator<FileMetadata> {
     if (opts.signal?.aborted) {
@@ -151,13 +141,18 @@ export class FileScanner {
             continue;
           }
 
+          // Apply optional file filter
+          if (opts.fileFilter && !opts.fileFilter(file, entryPath)) {
+            logger.debug('File filtered out', { path: entryPath });
+            continue;
+          }
+
           metadata = {
             path: entryPath,
             name,
             size: file.size,
             type: 'file',
             lastModified: file.lastModified,
-            mimeType: file.type || undefined,
             handle: handle,
           };
         } else if (isDirectoryHandle(handle)) {
@@ -181,7 +176,7 @@ export class FileScanner {
               depth + 1,
               opts,
               shouldExclude,
-              processedCount,
+              state,
               startTime,
             );
           }
@@ -203,14 +198,14 @@ export class FileScanner {
 
       // Yield metadata and emit events if we have metadata
       if (metadata) {
-        processedCount++;
+        state.processedCount++;
         yield metadata;
 
         // Emit events - these can throw but shouldn't stop scanning
         try {
           this.emitter.emit('file', metadata);
           this.emitter.emit('progress', {
-            processed: processedCount,
+            processed: state.processedCount,
             currentPath: entryPath,
           });
         } catch (eventError) {
@@ -223,7 +218,7 @@ export class FileScanner {
     // Emit complete event when done with root
     if (depth === 0) {
       this.emitter.emit('complete', {
-        processed: processedCount,
+        processed: state.processedCount,
         duration: Math.max(1, Math.round(performance.now() - startTime)),
       });
     }
@@ -234,13 +229,10 @@ export class FileScanner {
    */
   private async *scanConcurrent(
     rootHandle: FileSystemDirectoryHandle,
-    opts: Required<ScanOptions>,
+    opts: Required<Omit<ScanOptions, 'fileFilter'>> & { fileFilter?: ScanOptions['fileFilter'] },
     shouldExclude: (path: string) => boolean,
     startTime: number,
   ): AsyncGenerator<FileMetadata> {
-    // DEBUG: Log concurrent scan start
-    console.log('DEBUG Scanner: Starting concurrent scan');
-
     // Queue of directories to process
     const queue: Array<{ handle: FileSystemDirectoryHandle; path: string; depth: number }> = [
       { handle: rootHandle, path: '', depth: 0 },
@@ -256,11 +248,8 @@ export class FileScanner {
       for await (const [name, handle] of dir.handle.entries()) {
         if (opts.signal?.aborted) break;
 
-        // DEBUG: Log entry found
-        console.log(`DEBUG Scanner: Found entry "${name}" in "${dir.path}", type: ${handle.kind}`);
 
         if (!opts.includeHidden && name.startsWith('.')) {
-          console.log(`DEBUG Scanner: Skipping hidden file: ${name}`);
           continue;
         }
 
@@ -270,36 +259,13 @@ export class FileScanner {
         try {
           if (isFileHandle(handle)) {
             const file = await handle.getFile();
-            console.log(`DEBUG Scanner: File "${entryPath}" - size: ${file.size}, maxFileSize: ${opts.maxFileSize}`);
-
-            // Fix: Check if file size exceeds max (skip if too large)
+            // Check if file size exceeds max (skip if too large)
             if (opts.maxFileSize !== Infinity && file.size > opts.maxFileSize) {
-              console.log(`DEBUG Scanner: Skipping large file: ${entryPath} (${file.size} > ${opts.maxFileSize})`);
               continue;
             }
 
-            // TEMPORARY: Only accept text files
-            const isTextFile = file.type.startsWith('text/') ||
-              file.type === 'application/json' ||
-              file.type === 'application/javascript' ||
-              file.type === 'application/typescript' ||
-              file.type === 'application/xml' ||
-              file.type === '' && (
-                name.endsWith('.txt') || name.endsWith('.md') ||
-                name.endsWith('.ts') || name.endsWith('.tsx') ||
-                name.endsWith('.js') || name.endsWith('.jsx') ||
-                name.endsWith('.json') || name.endsWith('.css') ||
-                name.endsWith('.html') || name.endsWith('.xml') ||
-                name.endsWith('.yaml') || name.endsWith('.yml') ||
-                name.endsWith('.toml') || name.endsWith('.rs') ||
-                name.endsWith('.go') || name.endsWith('.py') ||
-                name.endsWith('.java') || name.endsWith('.cpp') ||
-                name.endsWith('.c') || name.endsWith('.h') ||
-                name.endsWith('.sh') || name.endsWith('.bash')
-              );
-
-            if (!isTextFile) {
-              console.log(`DEBUG Scanner: Skipping non-text file: ${entryPath} (type: ${file.type || 'unknown'})`);
+            // Apply optional file filter
+            if (opts.fileFilter && !opts.fileFilter(file, entryPath)) {
               continue;
             }
 
@@ -309,28 +275,31 @@ export class FileScanner {
               size: file.size,
               type: 'file',
               lastModified: file.lastModified,
-              mimeType: file.type || undefined,
               handle, // Make sure to include the handle
             };
 
             results.push(metadata);
             processedCount++;
-            console.log(`DEBUG Scanner: Added file ${processedCount}: ${entryPath}`);
             this.emitter.emit('file', metadata);
           } else if (isDirectoryHandle(handle)) {
-            const metadata: FileMetadata = {
-              path: entryPath,
-              name,
-              size: 0,
-              type: 'directory',
-              lastModified: Date.now(),
-            };
-
-            results.push(metadata);
-            processedCount++;
-            this.emitter.emit('file', metadata);
-
-            queue.push({ handle, path: entryPath, depth: dir.depth + 1 });
+            if (dir.depth < opts.maxDepth) {
+              const metadata: FileMetadata = {
+                path: entryPath,
+                name,
+                size: 0,
+                type: 'directory',
+                lastModified: Date.now(),
+                handle,
+              };
+              results.push(metadata);
+              processedCount++;
+              try {
+                this.emitter.emit('file', metadata);
+              } catch (eventError) {
+                logger.error('Error in event listener', eventError);
+              }
+              queue.push({ handle, path: entryPath, depth: dir.depth + 1 });
+            }
           }
         } catch (error) {
           const wrappedError = wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
@@ -353,19 +322,34 @@ export class FileScanner {
 
       while (queue.length > 0 && processing.size < opts.concurrency) {
         const dir = queue.shift()!;
-        const promise = processDirectory(dir).then(() => {
-          processing.delete(promise);
-          this.emitter.emit('progress', {
-            processed: processedCount,
-            currentPath: dir.path,
+        const promise = processDirectory(dir)
+          .then(() => {
+            processing.delete(promise);
+            this.emitter.emit('progress', {
+              processed: processedCount,
+              currentPath: dir.path,
+            });
+          })
+          .catch((error) => {
+            processing.delete(promise);
+            // Re-throw abort errors
+            if (error.name === 'AbortError') {
+              throw error;
+            }
+            // Log other errors but continue
+            logger.error('Error processing directory', error);
           });
-        });
         processing.add(promise);
       }
 
       // Wait for at least one to complete
       if (processing.size > 0) {
         await Promise.race(processing);
+      }
+
+      // Check abort again before yielding results
+      if (opts.signal?.aborted) {
+        throw new DOMException('Scan aborted', 'AbortError');
       }
 
       // Yield accumulated results

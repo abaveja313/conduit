@@ -23,15 +23,13 @@ export function begin_file_load(): void;
  * @param paths - File paths (will be normalized internally)
  * @param contents - Array of Uint8Arrays with file contents
  * @param mtimes - Last modified timestamps (JavaScript milliseconds since epoch)
- * @param mime_types - MIME types for each file (empty string if unknown)
  * @returns Number of files loaded in this batch
  * @throws {Error} If array lengths don't match or paths are invalid
  */
 export function load_file_batch(
     paths: string[],
     contents: Array<ArrayBuffer | Uint8Array | string>, // js_sys::Array
-    mtimes: number[],
-    mime_types: string[]
+    mtimes: number[]
 ): number;
 
 /**
@@ -63,6 +61,16 @@ export function clear_index(): void;
  * @returns Object with fileCount property
  */
 export function get_index_stats(): { fileCount: number };
+
+/**
+ * Read specific lines from a file in the index.
+ * @param path - File path to read from
+ * @param startLine - Starting line number (1-based)
+ * @param endLine - Ending line number (1-based, inclusive)
+ * @returns Array of lines from the file
+ * @throws {Error} If file not found or lines out of range
+ */
+export function read_file_lines(path: string, startLine: number, endLine: number): string[];
 
 /**
  * Default export for initializing the WASM module

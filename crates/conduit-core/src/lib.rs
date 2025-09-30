@@ -6,7 +6,7 @@ pub use error::{Error, Result};
 pub use fs::prelude::*;
 pub use tools::{
     search_regions, AbortFlag, ByteSpan, LineIndex, LineSpan, Match, MatchRegion, PreviewBuilder,
-    PreviewHunk, RegexEngineOpts, RegexMatcher,
+    PreviewHunk, ReadRequest, ReadResponse, RegexEngineOpts, RegexMatcher,
 };
 
 /// Selects which buffer set to operate on.
@@ -134,14 +134,14 @@ pub trait ReadTool {
         start_line: usize,
         end_line: usize,
         where_: SearchSpace,
-    ) -> Result<PreviewHunk>;
+    ) -> Result<ReadResponse>;
 }
 
 pub mod prelude {
     //! Common imports for consumers of this crate.
     pub use super::{
         AbortFlag, EditItem, EditRequest, EditResponse, EditTool, Error, FindRequest, FindResponse,
-        FindTool, Index, IndexManager, Match, PathKey, PreviewBuilder, PreviewHunk, ReadTool,
-        RegexEngineOpts, Result, SearchSpace,
+        FindTool, Index, IndexManager, Match, PathKey, PreviewBuilder, PreviewHunk, ReadRequest,
+        ReadResponse, ReadTool, RegexEngineOpts, Result, SearchSpace,
     };
 }

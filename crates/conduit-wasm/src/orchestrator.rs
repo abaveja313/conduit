@@ -2,6 +2,7 @@
 
 use crate::globals::get_index_manager;
 use conduit_core::prelude::*;
+use conduit_core::tools::extract_lines;
 
 /// Coordinates operations using global state.
 pub struct Orchestrator {
@@ -42,6 +43,33 @@ impl Orchestrator {
         // TODO: Implement edit logic
         Ok(EditResponse { items: Vec::new() })
     }
+
+    pub fn handle_read(
+        &self,
+        path: &PathKey,
+        start_line: usize,
+        end_line: usize,
+        where_: SearchSpace,
+    ) -> Result<ReadResponse> {
+        // Get the appropriate index
+        let index = match where_ {
+            SearchSpace::Active => self.index_manager.active_index(),
+            SearchSpace::Staged => self.index_manager.staged_index()?,
+        };
+
+        // Get the file entry
+        let entry = index
+            .get_file(path)
+            .ok_or_else(|| Error::InvalidPath(format!("File not found: {}", path.as_str())))?;
+
+        // Get file content
+        let content = entry.bytes().ok_or_else(|| {
+            Error::MissingContent(format!("File has no content: {}", path.as_str()))
+        })?;
+
+        // Extract the requested lines
+        extract_lines(path.clone(), content, start_line, end_line)
+    }
 }
 
 impl FindTool for Orchestrator {
@@ -53,5 +81,17 @@ impl FindTool for Orchestrator {
 impl EditTool for Orchestrator {
     fn run_edit(&mut self, req: EditRequest, abort: &AbortFlag) -> Result<EditResponse> {
         self.handle_edit(req, abort)
+    }
+}
+
+impl ReadTool for Orchestrator {
+    fn run_read(
+        &mut self,
+        path: &PathKey,
+        start_line: usize,
+        end_line: usize,
+        where_: SearchSpace,
+    ) -> Result<ReadResponse> {
+        self.handle_read(path, start_line, end_line, where_)
     }
 }

@@ -10,7 +10,6 @@ export interface FileMetadata {
   size: number;
   type: 'file' | 'directory';
   lastModified: number;
-  mimeType?: string;
   handle?: FileSystemHandle; // File or directory handle for direct access
 }
 
@@ -23,6 +22,8 @@ export interface ScanOptions {
   maxFileSize?: number;
   concurrency?: number;
   signal?: AbortSignal;
+  /** Optional filter function to determine which files to include */
+  fileFilter?: (file: File, path: string) => boolean;
 }
 
 export type ScannerEvents = {
