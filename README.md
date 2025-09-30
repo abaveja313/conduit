@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/abaveja313/conduit/actions/workflows/ci.yml/badge.svg)](https://github.com/abaveja313/conduit/actions/workflows/ci.yml)
 ![Last commit](https://img.shields.io/github/last-commit/abaveja313/conduit?label=Last%20updated)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-Apache%202.0-green)
 
 Conduit is an in-browser **MCP server and client**. Agents can operate on your local file system directly in the browser with no native app and no per-file uploads. Conduit combines a **Web Worker MCP transport**, the **File System Access API**, and a **Rust → WASM** core. The MCP server runs in a dedicated worker so it does not block the UI. The client is extensible with additional tools for safe, scoped capabilities.
 
