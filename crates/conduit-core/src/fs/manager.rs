@@ -49,7 +49,6 @@ impl IndexManager {
         if g.is_some() {
             return Err(Error::StagingAlreadyActive);
         }
-        // Start from current active snapshot
         *g = Some(StagingState {
             snapshot: self.active.load_full(),
             modified: IOrdSet::new(),
@@ -65,7 +64,6 @@ impl IndexManager {
         let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
         let idx = Arc::make_mut(&mut staged.snapshot); // split on first write
 
-        // track modification
         staged.modified.insert(key.clone());
         idx.upsert_file(key, entry);
         Ok(())
@@ -135,7 +133,6 @@ impl IndexManager {
             self.stage_file(key, entry)?;
         }
 
-        // Auto-commit to active index
         self.promote_staged()?;
 
         Ok(())
@@ -147,16 +144,45 @@ impl IndexManager {
     /// Call `begin_staging()` first, then multiple `add_files_to_staging()`,
     /// then `promote_staged()` when done.
     pub fn add_files_to_staging(&self, files: Vec<(PathKey, FileEntry)>) -> Result<()> {
-        // Ensure staging is active
         if self.staged.lock().is_none() {
             return Err(Error::StagingNotActive);
         }
 
-        // Add all files to existing staging
         for (key, entry) in files {
             self.stage_file(key, entry)?;
         }
 
         Ok(())
+    }
+
+    /// Get modified files from staging with their content.
+    pub fn get_staged_modifications(&self) -> Result<Vec<(PathKey, Vec<u8>)>> {
+        let g = self.staged.lock();
+        let staged = g.as_ref().ok_or(Error::StagingNotActive)?;
+
+        Ok(staged
+            .modified
+            .iter()
+            .filter_map(|path| {
+                staged
+                    .snapshot
+                    .get_file(path)
+                    .and_then(|entry| entry.bytes())
+                    .map(|bytes| (path.clone(), bytes.to_vec()))
+            })
+            .collect())
+    }
+
+    /// Get paths that were removed in staging.
+    pub fn get_staged_deletions(&self) -> Result<Vec<PathKey>> {
+        let g = self.staged.lock();
+        let staged = g.as_ref().ok_or(Error::StagingNotActive)?;
+
+        Ok(staged
+            .modified
+            .iter()
+            .filter(|path| staged.snapshot.get_file(path).is_none())
+            .cloned()
+            .collect())
     }
 }

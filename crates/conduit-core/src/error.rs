@@ -20,6 +20,9 @@ pub enum Error {
     #[error("file has no content: {0}")]
     MissingContent(String),
 
+    #[error("file already exists: {0}")]
+    FileAlreadyExists(String),
+
     // -------- Search / Replace / Preview --------
     #[error("invalid range: [{0}, {1})")]
     InvalidRange(usize, usize),

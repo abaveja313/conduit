@@ -4,13 +4,24 @@
 //! managing global state and exposing a simple API to JavaScript.
 
 use crate::globals::{create_path_key, get_index_manager};
-use conduit_core::{fs::FileEntry, SearchSpace};
-use js_sys::Uint8Array;
+use conduit_core::{
+    fs::FileEntry, CreateRequest, CreateResponse, CreateTool, DeleteRequest, DeleteResponse,
+    DeleteTool, SearchSpace,
+};
+use js_sys::{Date, Uint8Array};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
 mod globals;
 mod orchestrator;
+
+pub(crate) fn current_unix_timestamp() -> i64 {
+    let now_ms = Date::now();
+    if !now_ms.is_finite() {
+        return 0;
+    }
+    (now_ms / 1000.0).floor() as i64
+}
 
 // Helper macro for consistent error conversion
 macro_rules! js_err {
@@ -83,7 +94,6 @@ pub fn load_file_batch(
     contents: js_sys::Array, // Array of Uint8Arrays
     mtimes: Vec<f64>,        // JS timestamps are always f64
 ) -> Result<usize, JsValue> {
-    // Validate input arrays have same length
     let len = paths.len();
     let contents_len = contents.length() as usize;
     if contents_len != len || mtimes.len() != len {
@@ -102,7 +112,6 @@ pub fn load_file_batch(
     let manager = get_index_manager();
     let mut entries = Vec::with_capacity(len);
 
-    // Process each file
     for i in 0..len {
         if paths[i].is_empty() {
             return Err(js_err!("Empty path at index {}", i));
@@ -111,7 +120,6 @@ pub fn load_file_batch(
         let path_key = create_path_key(&paths[i])
             .map_err(|e| js_err!("Invalid path '{}': {}", paths[i], e))?;
 
-        // Validate timestamp
         if !mtimes[i].is_finite() || mtimes[i] < 0.0 {
             return Err(js_err!(
                 "Invalid timestamp for '{}': {}",
@@ -123,7 +131,6 @@ pub fn load_file_batch(
         // Convert JS timestamp (ms) to Unix timestamp (seconds)
         let mtime_secs = (mtimes[i] / 1000.0) as i64;
 
-        // Get Uint8Array from the array and convert to Vec<u8>
         let uint8_array = Uint8Array::from(contents.get(i as u32));
         let content_vec = uint8_array.to_vec();
 
@@ -136,7 +143,6 @@ pub fn load_file_batch(
         entries.push((path_key, entry));
     }
 
-    // Add all entries to staging
     manager
         .add_files_to_staging(entries)
         .map_err(|e| js_err!("Failed to add files to staging: {}", e))?;
@@ -150,7 +156,6 @@ pub fn load_file_batch(
 pub fn commit_file_load() -> Result<usize, JsValue> {
     let manager = get_index_manager();
 
-    // Get staged index to count files
     let staged = manager
         .staged_index()
         .map_err(|e| js_err!("Failed to access staged index: {}", e))?;
@@ -171,6 +176,92 @@ pub fn abort_file_load() -> Result<(), JsValue> {
     manager
         .revert_staged()
         .map_err(|e| js_err!("Failed to abort file load: {}", e))
+}
+
+/// Begin a manual staging session.
+#[wasm_bindgen]
+pub fn begin_index_staging() -> Result<(), JsValue> {
+    let manager = get_index_manager();
+    manager
+        .begin_staging()
+        .map_err(|e| js_err!("Failed to begin staging: {}", e))
+}
+
+/// Commit the staged index to active, returning modified files and count.
+#[wasm_bindgen]
+pub fn commit_index_staging() -> Result<JsValue, JsValue> {
+    let manager = get_index_manager();
+
+    // Get modifications before promoting
+    let modifications = manager
+        .get_staged_modifications()
+        .map_err(|e| js_err!("Failed to get staged modifications: {}", e))?;
+
+    let deletions = manager
+        .get_staged_deletions()
+        .map_err(|e| js_err!("Failed to get staged deletions: {}", e))?;
+
+    let staged = manager
+        .staged_index()
+        .map_err(|e| js_err!("Failed to access staged index: {}", e))?;
+    let count = staged.len() as u32;
+
+    let modified_array = js_sys::Array::new();
+    for (path, content) in modifications {
+        let file_obj = JsObjectBuilder::new()
+            .set("path", JsValue::from_str(path.as_str()))?
+            .set("content", Uint8Array::from(content.as_slice()).into())?
+            .build();
+        modified_array.push(&file_obj);
+    }
+
+    let deleted_array = js_sys::Array::new();
+    for path in deletions {
+        deleted_array.push(&JsValue::from_str(path.as_str()));
+    }
+
+    // Promote after we've collected the data
+    manager
+        .promote_staged()
+        .map_err(|e| js_err!("Failed to promote staged index: {}", e))?;
+
+    let obj = JsObjectBuilder::new()
+        .set("fileCount", JsValue::from(count))?
+        .set("modified", modified_array.into())?
+        .set("deleted", deleted_array.into())?
+        .build();
+
+    Ok(obj)
+}
+
+/// Revert active staging session without committing.
+#[wasm_bindgen]
+pub fn revert_index_staging() -> Result<(), JsValue> {
+    let manager = get_index_manager();
+    manager
+        .revert_staged()
+        .map_err(|e| js_err!("Failed to revert staging: {}", e))
+}
+
+/// Get staged modifications without committing.
+#[wasm_bindgen]
+pub fn get_staged_modifications() -> Result<JsValue, JsValue> {
+    let manager = get_index_manager();
+
+    let modifications = manager
+        .get_staged_modifications()
+        .map_err(|e| js_err!("Failed to get staged modifications: {}", e))?;
+
+    let modified_array = js_sys::Array::new();
+    for (path, content) in modifications {
+        let file_obj = JsObjectBuilder::new()
+            .set("path", JsValue::from_str(path.as_str()))?
+            .set("content", Uint8Array::from(content.as_slice()).into())?
+            .build();
+        modified_array.push(&file_obj);
+    }
+
+    Ok(modified_array.into())
 }
 
 /// Get the number of files in the active index.
@@ -228,7 +319,6 @@ pub fn read_file_lines(
     use crate::orchestrator::Orchestrator;
     use conduit_core::ReadTool;
 
-    // Create path key
     let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
 
     // Determine search space
@@ -238,7 +328,6 @@ pub fn read_file_lines(
         SearchSpace::Active
     };
 
-    // Create orchestrator and read the file
     let mut orchestrator = Orchestrator::new();
     let response = orchestrator
         .run_read(&path_key, start_line, end_line, where_)
@@ -251,6 +340,70 @@ pub fn read_file_lines(
         .set("endLine", JsValue::from(response.end_line as u32))?
         .set("content", JsValue::from_str(&response.content))?
         .set("totalLines", JsValue::from(response.total_lines as u32))?
+        .build();
+
+    Ok(obj)
+}
+
+/// Create or overwrite a file in the staged index.
+#[wasm_bindgen]
+pub fn create_index_file(
+    path: String,
+    content: Option<Uint8Array>,
+    allow_overwrite: bool,
+) -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+
+    let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
+    let content_bytes = content.map(|arr| arr.to_vec());
+
+    let request = CreateRequest {
+        path: path_key,
+        content: content_bytes,
+        allow_overwrite,
+    };
+
+    let mut orchestrator = Orchestrator::new();
+    let response = orchestrator
+        .run_create(request)
+        .map_err(|e| js_err!("Failed to create '{}': {}", path, e))?;
+
+    let CreateResponse {
+        path: response_path,
+        size,
+        created,
+    } = response;
+
+    let obj = JsObjectBuilder::new()
+        .set("path", JsValue::from_str(response_path.as_str()))?
+        .set("size", JsValue::from_f64(size as f64))?
+        .set("created", JsValue::from_bool(created))?
+        .build();
+
+    Ok(obj)
+}
+
+/// Delete a file from the staged index, if it exists.
+#[wasm_bindgen]
+pub fn delete_index_file(path: String) -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+
+    let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
+    let request = DeleteRequest::new(path_key);
+
+    let mut orchestrator = Orchestrator::new();
+    let response = orchestrator
+        .run_delete(request)
+        .map_err(|e| js_err!("Failed to delete '{}': {}", path, e))?;
+
+    let DeleteResponse {
+        path: response_path,
+        existed,
+    } = response;
+
+    let obj = JsObjectBuilder::new()
+        .set("path", JsValue::from_str(response_path.as_str()))?
+        .set("existed", JsValue::from_bool(existed))?
         .build();
 
     Ok(obj)

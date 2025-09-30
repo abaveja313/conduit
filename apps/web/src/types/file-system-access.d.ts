@@ -7,7 +7,7 @@ interface Window {
     startIn?: 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos';
     excludeAcceptAllOption?: boolean;
   }): Promise<FileSystemDirectoryHandle>;
-  
+
   showOpenFilePicker(options?: {
     multiple?: boolean;
     excludeAcceptAllOption?: boolean;
@@ -18,7 +18,7 @@ interface Window {
     id?: string;
     startIn?: 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos';
   }): Promise<FileSystemFileHandle[]>;
-  
+
   showSaveFilePicker(options?: {
     excludeAcceptAllOption?: boolean;
     suggestedName?: string;

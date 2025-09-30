@@ -116,6 +116,89 @@ pub struct EditResponse {
     pub items: Vec<EditItem>,
 }
 
+/// Request to create a file in the staged index.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CreateRequest {
+    /// Path where the file should be created
+    pub path: PathKey,
+    /// File content (None creates an empty file)
+    pub content: Option<Vec<u8>>,
+    /// Whether to overwrite if file already exists
+    pub allow_overwrite: bool,
+}
+
+impl CreateRequest {
+    /// Create a new request for an empty file.
+    pub fn empty(path: PathKey) -> Self {
+        Self {
+            path,
+            content: None,
+            allow_overwrite: false,
+        }
+    }
+
+    /// Create a new request with content.
+    pub fn with_content(path: PathKey, content: Vec<u8>) -> Self {
+        Self {
+            path,
+            content: Some(content),
+            allow_overwrite: false,
+        }
+    }
+
+    /// Enable overwriting existing files.
+    pub fn allow_overwrite(mut self) -> Self {
+        self.allow_overwrite = true;
+        self
+    }
+
+    /// Validate the request parameters.
+    pub fn validate(&self) -> Result<()> {
+        // PathKey construction already validates non-empty paths
+        Ok(())
+    }
+}
+
+/// Response after creating a file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CreateResponse {
+    /// Path of the created file
+    pub path: PathKey,
+    /// Size of the created file in bytes
+    pub size: u64,
+    /// Whether the file was newly created (false if overwritten)
+    pub created: bool,
+}
+
+/// Request to delete a file from the staged index.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DeleteRequest {
+    /// Path of the file to delete
+    pub path: PathKey,
+}
+
+impl DeleteRequest {
+    /// Create a new delete request.
+    pub fn new(path: PathKey) -> Self {
+        Self { path }
+    }
+
+    /// Validate the request parameters.
+    pub fn validate(&self) -> Result<()> {
+        // PathKey construction already validates non-empty paths
+        Ok(())
+    }
+}
+
+/// Response after deleting a file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DeleteResponse {
+    /// Path of the deleted file
+    pub path: PathKey,
+    /// Whether the file existed before deletion
+    pub existed: bool,
+}
+
 /// Search files and return preview excerpts.
 pub trait FindTool {
     fn run_find(&mut self, req: FindRequest, abort: &AbortFlag) -> Result<FindResponse>;
@@ -137,11 +220,22 @@ pub trait ReadTool {
     ) -> Result<ReadResponse>;
 }
 
+/// Create files in the staged index.
+pub trait CreateTool {
+    fn run_create(&mut self, req: CreateRequest) -> Result<CreateResponse>;
+}
+
+/// Delete files from the staged index.
+pub trait DeleteTool {
+    fn run_delete(&mut self, req: DeleteRequest) -> Result<DeleteResponse>;
+}
+
 pub mod prelude {
     //! Common imports for consumers of this crate.
     pub use super::{
-        AbortFlag, EditItem, EditRequest, EditResponse, EditTool, Error, FindRequest, FindResponse,
-        FindTool, Index, IndexManager, Match, PathKey, PreviewBuilder, PreviewHunk, ReadRequest,
-        ReadResponse, ReadTool, RegexEngineOpts, Result, SearchSpace,
+        AbortFlag, CreateRequest, CreateResponse, CreateTool, DeleteRequest, DeleteResponse,
+        DeleteTool, EditItem, EditRequest, EditResponse, EditTool, Error, FindRequest,
+        FindResponse, FindTool, Index, IndexManager, Match, PathKey, PreviewBuilder, PreviewHunk,
+        ReadRequest, ReadResponse, ReadTool, RegexEngineOpts, Result, SearchSpace,
     };
 }
