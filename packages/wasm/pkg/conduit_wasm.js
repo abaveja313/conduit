@@ -290,6 +290,50 @@ export function abort_file_load() {
 }
 
 /**
+ * Begin a manual staging session.
+ */
+export function begin_index_staging() {
+    const ret = wasm.begin_index_staging();
+    if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
+    }
+}
+
+/**
+ * Commit the staged index to active, returning modified files and count.
+ * @returns {any}
+ */
+export function commit_index_staging() {
+    const ret = wasm.commit_index_staging();
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Revert active staging session without committing.
+ */
+export function revert_index_staging() {
+    const ret = wasm.revert_index_staging();
+    if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
+    }
+}
+
+/**
+ * Get staged modifications without committing.
+ * @returns {any}
+ */
+export function get_staged_modifications() {
+    const ret = wasm.get_staged_modifications();
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Get the number of files in the active index.
  * @returns {number}
  */
@@ -346,6 +390,38 @@ export function read_file_lines(path, start_line, end_line, use_staged) {
     const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ret = wasm.read_file_lines(ptr0, len0, start_line, end_line, use_staged);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Create or overwrite a file in the staged index.
+ * @param {string} path
+ * @param {Uint8Array | null | undefined} content
+ * @param {boolean} allow_overwrite
+ * @returns {any}
+ */
+export function create_index_file(path, content, allow_overwrite) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.create_index_file(ptr0, len0, isLikeNone(content) ? 0 : addToExternrefTable0(content), allow_overwrite);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Delete a file from the staged index, if it exists.
+ * @param {string} path
+ * @returns {any}
+ */
+export function delete_index_file(path) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.delete_index_file(ptr0, len0);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -417,12 +493,28 @@ function __wbg_get_imports() {
         const ret = new Object();
         return ret;
     };
+    imports.wbg.__wbg_new_1f3a344cf3123716 = function() {
+        const ret = new Array();
+        return ret;
+    };
     imports.wbg.__wbg_new_8a6f238a6ece86ea = function() {
         const ret = new Error();
         return ret;
     };
+    imports.wbg.__wbg_newfromslice_074c56947bd43469 = function(arg0, arg1) {
+        const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
+        return ret;
+    };
+    imports.wbg.__wbg_now_1e80617bcee43265 = function() {
+        const ret = Date.now();
+        return ret;
+    };
     imports.wbg.__wbg_prototypesetcall_3d4a26c1ed734349 = function(arg0, arg1, arg2) {
         Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
+    };
+    imports.wbg.__wbg_push_330b2eb93e4e1212 = function(arg0, arg1) {
+        const ret = arg0.push(arg1);
+        return ret;
     };
     imports.wbg.__wbg_set_453345bcda80b89a = function() { return handleError(function (arg0, arg1, arg2) {
         const ret = Reflect.set(arg0, arg1, arg2);

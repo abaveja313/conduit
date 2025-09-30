@@ -12,7 +12,9 @@ const logger = createLogger('file-scanner');
  */
 export class FileScanner {
   private emitter: Emitter<ScannerEvents>;
-  private readonly defaultOptions: Required<Omit<ScanOptions, 'fileFilter'>> & { fileFilter?: ScanOptions['fileFilter'] } = {
+  private readonly defaultOptions: Required<Omit<ScanOptions, 'fileFilter'>> & {
+    fileFilter?: ScanOptions['fileFilter'];
+  } = {
     exclude: [],
     maxDepth: Infinity,
     includeHidden: false,
@@ -66,15 +68,7 @@ export class FileScanner {
         logger.info('Using concurrent scanning', { concurrency: opts.concurrency });
         yield* this.scanConcurrent(rootHandle, opts, shouldExclude, startTime);
       } else {
-        yield* this.scanSequential(
-          rootHandle,
-          '',
-          0,
-          opts,
-          shouldExclude,
-          state,
-          startTime,
-        );
+        yield* this.scanSequential(rootHandle, '', 0, opts, shouldExclude, state, startTime);
       }
     } catch (error) {
       if (isAbortError(error)) {
@@ -247,7 +241,6 @@ export class FileScanner {
 
       for await (const [name, handle] of dir.handle.entries()) {
         if (opts.signal?.aborted) break;
-
 
         if (!opts.includeHidden && name.startsWith('.')) {
           continue;

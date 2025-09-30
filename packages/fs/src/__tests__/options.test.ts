@@ -37,8 +37,8 @@ describe('FileScanner - Options', () => {
     const withHidden = await collectScanResults(scanner, handle, { includeHidden: true });
     const withoutHidden = await collectScanResults(scanner, handle, { includeHidden: false });
 
-    expect(withHidden.filter(f => f.type === 'file')).toHaveLength(3);
-    expect(withoutHidden.filter(f => f.type === 'file')).toHaveLength(1);
-    expect(withoutHidden.filter(f => f.type === 'file')[0].name).toBe('visible.txt');
+    expect(withHidden.filter((f) => f.type === 'file')).toHaveLength(3);
+    expect(withoutHidden.filter((f) => f.type === 'file')).toHaveLength(1);
+    expect(withoutHidden.filter((f) => f.type === 'file')[0].name).toBe('visible.txt');
   });
 });

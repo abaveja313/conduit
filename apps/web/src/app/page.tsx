@@ -5,9 +5,9 @@ export default function Home() {
     <div className="font-sans min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-8">
         <header className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-2">Conduit WASM File System</h1>
+          <h1 className="text-4xl font-bold mb-2">Conduit</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Test file loading and indexing with WebAssembly
+            File loading and indexing with WebAssembly
           </p>
         </header>
 

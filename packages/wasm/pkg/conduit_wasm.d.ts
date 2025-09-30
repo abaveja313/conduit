@@ -28,6 +28,22 @@ export function commit_file_load(): number;
  */
 export function abort_file_load(): void;
 /**
+ * Begin a manual staging session.
+ */
+export function begin_index_staging(): void;
+/**
+ * Commit the staged index to active, returning modified files and count.
+ */
+export function commit_index_staging(): any;
+/**
+ * Revert active staging session without committing.
+ */
+export function revert_index_staging(): void;
+/**
+ * Get staged modifications without committing.
+ */
+export function get_staged_modifications(): any;
+/**
  * Get the number of files in the active index.
  */
 export function file_count(): number;
@@ -57,6 +73,14 @@ export function get_index_stats(): any;
  * - `totalLines`: Total number of lines in the file
  */
 export function read_file_lines(path: string, start_line: number, end_line: number, use_staged: boolean): any;
+/**
+ * Create or overwrite a file in the staged index.
+ */
+export function create_index_file(path: string, content: Uint8Array | null | undefined, allow_overwrite: boolean): any;
+/**
+ * Delete a file from the staged index, if it exists.
+ */
+export function delete_index_file(path: string): any;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -68,10 +92,16 @@ export interface InitOutput {
   readonly load_file_batch: (a: number, b: number, c: any, d: number, e: number) => [number, number, number];
   readonly commit_file_load: () => [number, number, number];
   readonly abort_file_load: () => [number, number];
+  readonly begin_index_staging: () => [number, number];
+  readonly commit_index_staging: () => [number, number, number];
+  readonly revert_index_staging: () => [number, number];
+  readonly get_staged_modifications: () => [number, number, number];
   readonly file_count: () => number;
   readonly clear_index: () => [number, number];
   readonly get_index_stats: () => [number, number, number];
   readonly read_file_lines: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+  readonly create_index_file: (a: number, b: number, c: number, d: number) => [number, number, number];
+  readonly delete_index_file: (a: number, b: number) => [number, number, number];
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;

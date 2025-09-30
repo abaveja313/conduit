@@ -27,9 +27,9 @@ export function begin_file_load(): void;
  * @throws {Error} If array lengths don't match or paths are invalid
  */
 export function load_file_batch(
-    paths: string[],
-    contents: Array<ArrayBuffer | Uint8Array | string>, // js_sys::Array
-    mtimes: number[]
+  paths: string[],
+  contents: Array<ArrayBuffer | Uint8Array | string>, // js_sys::Array
+  mtimes: number[],
 ): number;
 
 /**
@@ -67,12 +67,84 @@ export function get_index_stats(): { fileCount: number };
  * @param path - File path to read from
  * @param startLine - Starting line number (1-based)
  * @param endLine - Ending line number (1-based, inclusive)
- * @returns Array of lines from the file
+ * @param useStaged - If true, read from staged index; otherwise read from active index
+ * @returns Object containing path, startLine, endLine, content, and totalLines
  * @throws {Error} If file not found or lines out of range
  */
-export function read_file_lines(path: string, startLine: number, endLine: number): string[];
+export function read_file_lines(
+  path: string,
+  startLine: number,
+  endLine: number,
+  useStaged: boolean,
+): {
+  path: string;
+  startLine: number;
+  endLine: number;
+  content: string;
+  totalLines: number;
+};
+
+/**
+ * Begin a manual staging session.
+ * @throws {Error} If staging is already active
+ */
+export function begin_index_staging(): void;
+
+/**
+ * Commit the staged index to active, returning modified files and count.
+ * @returns Object with fileCount and array of modified files
+ * @throws {Error} If no staging session is active
+ */
+export function commit_index_staging(): {
+  fileCount: number;
+  modified: Array<{ path: string; content: Uint8Array }>;
+};
+
+/**
+ * Revert active staging session without committing.
+ * @throws {Error} If no staging session is active
+ */
+export function revert_index_staging(): void;
+
+/**
+ * Get staged modifications without committing.
+ * @returns Array of modified files with their content
+ * @throws {Error} If no staging session is active
+ */
+export function get_staged_modifications(): Array<{ path: string; content: Uint8Array }>;
+
+/**
+ * Create or overwrite a file in the staged index.
+ * @param path - File path to create
+ * @param content - Optional file content
+ * @param allowOverwrite - Whether to overwrite existing files
+ * @returns Object with path, size, and created flag
+ * @throws {Error} If file exists and allowOverwrite is false
+ */
+export function create_index_file(
+  path: string,
+  content?: Uint8Array | null,
+  allowOverwrite?: boolean,
+): {
+  path: string;
+  size: number;
+  created: boolean;
+};
+
+/**
+ * Delete a file from the staged index.
+ * @param path - File path to delete
+ * @returns Object with path and existed flag
+ * @throws {Error} If staging is not active
+ */
+export function delete_index_file(path: string): {
+  path: string;
+  existed: boolean;
+};
 
 /**
  * Default export for initializing the WASM module
  */
-export default function init(input?: string | RequestInfo | URL | Response | BufferSource | WebAssembly.Module): Promise<void>;
+export default function init(
+  input?: string | RequestInfo | URL | Response | BufferSource | WebAssembly.Module,
+): Promise<void>;

@@ -1,6 +1,7 @@
 //! Orchestrator for coordinating search and edit operations.
 
-use crate::globals::get_index_manager;
+use crate::{current_unix_timestamp, globals::get_index_manager};
+use conduit_core::fs::FileEntry;
 use conduit_core::prelude::*;
 use conduit_core::tools::extract_lines;
 
@@ -51,24 +52,59 @@ impl Orchestrator {
         end_line: usize,
         where_: SearchSpace,
     ) -> Result<ReadResponse> {
-        // Get the appropriate index
         let index = match where_ {
             SearchSpace::Active => self.index_manager.active_index(),
             SearchSpace::Staged => self.index_manager.staged_index()?,
         };
 
-        // Get the file entry
         let entry = index
             .get_file(path)
             .ok_or_else(|| Error::InvalidPath(format!("File not found: {}", path.as_str())))?;
 
-        // Get file content
         let content = entry.bytes().ok_or_else(|| {
             Error::MissingContent(format!("File has no content: {}", path.as_str()))
         })?;
-
-        // Extract the requested lines
         extract_lines(path.clone(), content, start_line, end_line)
+    }
+
+    pub fn handle_create(&self, req: CreateRequest) -> Result<CreateResponse> {
+        let staged = self.index_manager.staged_index()?;
+        let exists = staged.get_file(&req.path).is_some();
+
+        if exists && !req.allow_overwrite {
+            return Err(Error::FileAlreadyExists(req.path.as_str().to_string()));
+        }
+
+        let current_time = current_unix_timestamp();
+
+        let entry = match req.content {
+            Some(bytes) => FileEntry::from_bytes_and_path(&req.path, current_time, bytes.into()),
+            None => FileEntry::new_from_path(&req.path, 0, current_time),
+        };
+
+        let size = entry.size();
+        self.index_manager.stage_file(req.path.clone(), entry)?;
+
+        Ok(CreateResponse {
+            path: req.path,
+            size,
+            created: !exists,
+        })
+    }
+
+    pub fn handle_delete(&self, req: DeleteRequest) -> Result<DeleteResponse> {
+        // Ensure staging is active
+        let staged = self.index_manager.staged_index()?;
+        let existed = staged.get_file(&req.path).is_some();
+
+        if existed {
+            self.index_manager.remove_staged_file(&req.path)?;
+        }
+
+        Ok(DeleteResponse {
+            path: req.path,
+            existed,
+        })
     }
 }
 
@@ -93,5 +129,17 @@ impl ReadTool for Orchestrator {
         where_: SearchSpace,
     ) -> Result<ReadResponse> {
         self.handle_read(path, start_line, end_line, where_)
+    }
+}
+
+impl CreateTool for Orchestrator {
+    fn run_create(&mut self, req: CreateRequest) -> Result<CreateResponse> {
+        self.handle_create(req)
+    }
+}
+
+impl DeleteTool for Orchestrator {
+    fn run_delete(&mut self, req: DeleteRequest) -> Result<DeleteResponse> {
+        self.handle_delete(req)
     }
 }

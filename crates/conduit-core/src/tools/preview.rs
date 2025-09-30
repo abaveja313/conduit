@@ -48,11 +48,9 @@ impl PreviewBuilder {
         match_start_line: usize,
         match_end_line: usize,
     ) -> Result<PreviewHunk> {
-        // Calculate preview window with context
         let (p_start, p_end) =
             line_index.preview_window(match_start_line, match_end_line, self.delta);
 
-        // Get byte range for the preview lines
         let byte_range = line_index
             .span_of_lines(p_start, p_end)
             .ok_or(Error::InvalidRange(p_start, p_end))?;
