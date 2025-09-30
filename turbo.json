@@ -1,0 +1,32 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build:wasm": {
+      "outputs": ["artifacts/wasm/**"],
+      "cache": true
+    },
+    "build": {
+      "dependsOn": ["^build", "build:wasm"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "cache": true
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "outputs": [],
+      "cache": true
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": true
+    },
+    "e2e": {
+      "cache": false,
+      "dependsOn": ["build"]
+    }
+  },
+  "globalEnv": ["CI", "NODE_ENV"]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@conduit/wasm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WASM bindings for Conduit core",
+  "main": "./pkg/conduit_wasm.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./pkg/conduit_wasm.js",
+      "types": "./index.d.ts"
+    }
+  },
+  "files": [
+    "pkg/",
+    "index.d.ts"
+  ],
+  "scripts": {
+    "build": "wasm-pack build ../../crates/conduit-wasm --target web --out-dir ../../packages/wasm/pkg",
+    "build:simple": "cd ../.. && ./tools/build-wasm.sh"
+  }
+}

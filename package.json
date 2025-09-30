@@ -1,0 +1,34 @@
+{
+  "name": "conduit",
+  "type": "module",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "build:wasm": "bash tools/build-wasm.sh",
+    "build": "turbo run build --filter=...[.]",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint && cargo fmt --all -- --check || true",
+    "test": "turbo run test && cargo test --workspace --quiet || true",
+    "e2e": "turbo run e2e",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.5.0",
+    "@commitlint/config-conventional": "^19.5.0",
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.35.0",
+    "@playwright/test": "^1.47.2",
+    "@typescript-eslint/eslint-plugin": "^8.8.0",
+    "@typescript-eslint/parser": "^8.8.0",
+    "eslint": "^9.35.0",
+    "globals": "^16.4.0",
+    "husky": "^9.1.6",
+    "lint-staged": "^16.1.6",
+    "prettier": "^3.6.2",
+    "prettier-plugin-toml": "^2.0.6",
+    "turbo": "^2.5.8",
+    "typescript": "^5.6.2",
+    "typescript-eslint": "^8.44.1",
+    "zod": "^3.23.8"
+  }
+}

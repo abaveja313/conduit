@@ -1,0 +1,8 @@
+{
+  "*.{ts,tsx,js}": "eslint --fix",
+  "*.{md,mdx,json,yml,yaml,toml}": "prettier --write",
+  "*.rs": [
+    "rustfmt --edition 2021",
+    "bash -lc 'cargo clippy --workspace --all-targets -- -D warnings'"
+  ]
+}

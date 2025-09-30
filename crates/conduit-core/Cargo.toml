@@ -1,0 +1,21 @@
+[package]
+name = "conduit-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arc-swap = "1.7.1"
+camino = "1.2.1"
+globset = "0.4.16"
+grep-regex = "0.1.13"
+grep-searcher = "0.1.14"
+im = "15.1.0"
+memchr = "2.7.5"
+normalize-path = "0.2.1"
+once_cell = "1.21.3"
+parking_lot = "0.12.4"
+path-slash = "0.2.1"
+regex = "1.11.3"
+thiserror = "2.0.17"
+serde = { version = "1", features = ["derive", "rc"] }
+grep-matcher = "0.1.7"
