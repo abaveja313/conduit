@@ -2,6 +2,9 @@
 name = "conduit-core"
 version = "0.1.0"
 edition = "2021"
+description = "Core file indexing, search, and manipulation engine for Conduit"
+repository = "https://github.com/abaveja313/conduit"
+license = "Apache-2.0"
 
 [dependencies]
 arc-swap = "1.7.1"

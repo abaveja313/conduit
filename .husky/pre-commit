@@ -1,2 +1,2 @@
-#!/bin/sh
 just pre-commit
+git add apps/web/public/workers/conduit.wasm

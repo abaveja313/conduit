@@ -17,7 +17,8 @@
     "index.d.ts"
   ],
   "scripts": {
-    "build": "wasm-pack build ../../crates/conduit-wasm --target web --out-dir ../../packages/wasm/pkg",
+    "build": "echo 'WASM package using prebuilt files from pkg/'",
+    "build:local": "wasm-pack build ../../crates/conduit-wasm --target web --out-dir ../../packages/wasm/pkg",
     "build:simple": "cd ../.. && ./tools/build-wasm.sh"
   }
 }

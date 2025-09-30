@@ -1,0 +1,21 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const init: () => void;
+export const ping: () => [number, number];
+export const begin_file_load: () => [number, number];
+export const load_file_batch: (a: number, b: number, c: any, d: number, e: number) => [number, number, number];
+export const commit_file_load: () => [number, number, number];
+export const abort_file_load: () => [number, number];
+export const file_count: () => number;
+export const clear_index: () => [number, number];
+export const get_index_stats: () => [number, number, number];
+export const read_file_lines: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
+export const __wbindgen_exn_store: (a: number) => void;
+export const __externref_table_alloc: () => number;
+export const __wbindgen_export_3: WebAssembly.Table;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __externref_table_dealloc: (a: number) => void;
+export const __wbindgen_start: () => void;

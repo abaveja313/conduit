@@ -108,7 +108,7 @@ update:
     pnpm update --interactive
 
 # Run formatting and linting on staged files (used by git hooks)
-pre-commit: fmt-staged audit
+pre-commit: fmt-staged build-wasm audit
 
 # Run full formatting and linting on all files
 pre-commit-all: fmt lint

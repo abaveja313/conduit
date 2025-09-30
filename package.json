@@ -4,7 +4,6 @@
   "private": true,
   "packageManager": "pnpm@10.15.1",
   "scripts": {
-    "build:wasm": "bash tools/build-wasm.sh",
     "build": "turbo run build --filter=...[.]",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint && cargo fmt --all -- --check || true",

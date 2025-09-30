@@ -1,9 +1,8 @@
 {
-  "buildCommand": "cd ../.. && pnpm build:wasm && pnpm --filter web build",
+  "buildCommand": "cd ../.. && pnpm turbo run build --filter=web...",
   "installCommand": "pnpm install --frozen-lockfile",
   "framework": "nextjs",
-  "outputDirectory": "apps/web/.next",
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet .",
+  "outputDirectory": ".next",
   "headers": [
     {
       "source": "/workers/(.*)\\.wasm",

@@ -6,8 +6,8 @@
       "cache": true
     },
     "build": {
-      "dependsOn": ["^build", "build:wasm"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**", "pkg/**"],
       "cache": true
     },
     "dev": {

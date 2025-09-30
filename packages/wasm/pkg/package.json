@@ -1,0 +1,21 @@
+{
+  "name": "conduit-wasm",
+  "type": "module",
+  "description": "WebAssembly bindings for Conduit file indexing and search",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abaveja313/conduit"
+  },
+  "files": [
+    "conduit_wasm_bg.wasm",
+    "conduit_wasm.js",
+    "conduit_wasm.d.ts"
+  ],
+  "main": "conduit_wasm.js",
+  "types": "conduit_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

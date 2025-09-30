@@ -2,6 +2,9 @@
 name = "conduit-wasm"
 version = "0.1.0"
 edition = "2021"
+description = "WebAssembly bindings for Conduit file indexing and search"
+repository = "https://github.com/abaveja313/conduit"
+license = "Apache-2.0"
 
 [lib]
 crate-type = ["cdylib"]

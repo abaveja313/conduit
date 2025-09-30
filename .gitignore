@@ -90,10 +90,11 @@ dist
 
 # WASM build output
 **/pkg/
+!packages/wasm/pkg/
 artifacts/
 
-# WASM files in web app (built by Vercel)
-apps/web/public/workers/*.wasm
+# WASM files in web app are committed (built by pre-commit hook)
+# apps/web/public/workers/*.wasm
 
 # Gatsby files
 .cache/
