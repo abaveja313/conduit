@@ -1,552 +1,369 @@
+import { z } from 'zod';
 import * as wasm from '@conduit/wasm';
-import type { FileMetadata } from './types.js';
-import { FileScanner } from './scanner.js';
-import { createLogger, ErrorCodes, wrapError, getErrorMessage } from '@conduit/shared';
-import pLimit from 'p-limit';
+import { FileManager } from './file-manager.js';
+import type { FileManagerConfig } from './file-manager.js';
+import { createLogger, ErrorCodes, wrapError } from '@conduit/shared';
+import { encodeText, decodeText, normalizePath } from './file-utils.js';
+import { FileMetadata } from './types.js';
 
 const logger = createLogger('file-service');
 
-/**
- * Quick binary file detection
- */
-export async function isBinaryFile(file: File): Promise<boolean> {
-  const ext = file.name.toLowerCase().split('.').pop() || '';
+// Schema definitions using Zod for runtime validation
+export const readFileSchema = z.object({
+    path: z.string().describe('File path to read from staged WASM index'),
+    lineRange: z.object({
+        start: z.number().positive().describe('Starting line number (1-based)'),
+        end: z.number().positive().describe('Ending line number (inclusive)')
+    }).describe('Range of lines to read from the file')
+});
 
-  // Known text files - skip content check
-  const textExts = [
-    'txt',
-    'md',
-    'json',
-    'xml',
-    'html',
-    'css',
-    'js',
-    'ts',
-    'jsx',
-    'tsx',
-    'py',
-    'java',
-    'c',
-    'cpp',
-    'h',
-    'cs',
-    'php',
-    'rb',
-    'go',
-    'rs',
-    'yml',
-    'yaml',
-    'toml',
-    'ini',
-    'sh',
-    'sql',
-    'csv',
-    'log',
-    'env',
-  ];
-  if (textExts.includes(ext)) return false;
+export const createFileSchema = z.object({
+    path: z.string().describe('File path to create'),
+    content: z.string().describe('Text content to write to the file')
+});
 
-  // Known binary files - skip content check
-  const binaryExts = [
-    'jpg',
-    'jpeg',
-    'png',
-    'gif',
-    'webp',
-    'bmp',
-    'ico',
-    'svg',
-    'pdf',
-    'zip',
-    'tar',
-    'gz',
-    'rar',
-    '7z',
-    'exe',
-    'dll',
-    'so',
-    'mp3',
-    'mp4',
-    'avi',
-    'mov',
-    'wav',
-    'flac',
-    'ogg',
-    'webm',
-    'ttf',
-    'otf',
-    'woff',
-    'woff2',
-    'eot',
-    'db',
-    'sqlite',
-  ];
-  if (binaryExts.includes(ext)) return true;
+export const deleteFileSchema = z.object({
+    path: z.string().describe('File path to delete')
+});
 
-  // Unknown extension - check content
-  const sample = new Uint8Array(await file.slice(0, 8192).arrayBuffer());
+// Type inference from schemas
+export type ReadFileParams = z.infer<typeof readFileSchema>;
+export type CreateFileParams = z.infer<typeof createFileSchema>;
+export type DeleteFileParams = z.infer<typeof deleteFileSchema>;
 
-  // Quick NUL byte check
-  if (sample.indexOf(0x00) !== -1) return true;
-
-  // UTF-8 validity check
-  try {
-    new TextDecoder('utf-8', { fatal: true }).decode(sample);
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-export interface FileServiceConfig {
-  /** Parallel file operations limit (default: 10) */
-  concurrency?: number;
-  /** Files per batch for WASM loading (default: 100) */
-  batchSize?: number;
-  /** Progress callback for loading phase */
-  onProgress?: (loaded: number, total: number) => void;
-  /** Progress callback for scanning phase */
-  onScanProgress?: (filesFound: number, currentPath?: string, fileSize?: number) => void;
-}
-
-export interface FileServiceStats {
-  filesScanned: number;
-  filesLoaded: number;
-  binaryFilesSkipped: number;
-  duration: number;
-  totalSize: number;
-}
 
 /**
- * FileService loads files from File System Access API into WASM index.
- * All file content is loaded upfront and stored in WASM for fast searching.
+ * FileService provides the main API for file operations.
+ * Handles schemas, validation, and tool formatting for AI models.
  */
 export class FileService {
-  private metadata = new Map<string, FileMetadata>();
-  private handles = new Map<string, FileSystemFileHandle>();
-  private rootDirectoryHandle?: FileSystemDirectoryHandle;
-  private limit: ReturnType<typeof pLimit>;
-  private initialized = false;
+    private fileManager: FileManager;
+    private wasmInitialized = false;
 
-  private readonly defaultConfig: Required<
-    Omit<FileServiceConfig, 'onProgress' | 'onScanProgress'>
-  > = {
-      concurrency: 10,
-      batchSize: 1000,
-    };
-
-  private readonly config: FileServiceConfig;
-
-  constructor(config: FileServiceConfig = {}) {
-    this.config = { ...this.defaultConfig, ...config };
-    this.limit = pLimit(this.config.concurrency!);
-  }
-
-  private normalizePath(path: string): string {
-    return (
-      path
-        .replace(/\\/g, '/')
-        .replace(/\/+/g, '/')
-        .replace(/^\.\//, '')
-        .replace(/\/$/, '') || '/'
-    );
-  }
-
-  private async walkToDirectory(
-    segments: string[],
-    { create }: { create: boolean },
-  ): Promise<FileSystemDirectoryHandle> {
-    if (!this.rootDirectoryHandle) {
-      throw wrapError(new Error('Root directory handle not set'), ErrorCodes.FILE_ACCESS_ERROR, {
-        operation: 'walk_to_directory',
-        segments,
-      });
+    constructor(config?: FileManagerConfig) {
+        this.fileManager = new FileManager(config);
     }
 
-    let dir: FileSystemDirectoryHandle = this.rootDirectoryHandle;
-    for (const segment of segments) {
-      dir = await dir.getDirectoryHandle(segment, { create });
-    }
-    return dir;
-  }
+    /**
+     * Ensure WASM is initialized
+     */
+    private async ensureWasmInitialized(): Promise<void> {
+        if (this.wasmInitialized) return;
 
-  private async ensureFileHandle(
-    normalizedPath: string,
-  ): Promise<FileSystemFileHandle | undefined> {
-    let handle = this.handles.get(normalizedPath);
-    if (handle) {
-      return handle;
-    }
-
-    const segments = normalizedPath.split('/').filter(Boolean);
-    if (segments.length === 0) {
-      return undefined;
-    }
-
-    try {
-      const dir = await this.walkToDirectory(segments.slice(0, -1), { create: true });
-      const fileName = segments[segments.length - 1];
-      handle = await dir.getFileHandle(fileName, { create: true });
-      this.handles.set(normalizedPath, handle);
-      this.metadata.set(normalizedPath, {
-        path: normalizedPath,
-        name: fileName,
-        size: 0,
-        type: 'file',
-        lastModified: Date.now(),
-        handle,
-      });
-      logger.debug(`Created new file handle for: ${normalizedPath}`);
-      return handle;
-    } catch (error) {
-      logger.warn(`Failed to create file handle: ${normalizedPath}`, error);
-      return undefined;
-    }
-  }
-
-  private updateMetadataAfterWrite(normalizedPath: string, size: number): void {
-    const existing = this.metadata.get(normalizedPath);
-    const handle = this.handles.get(normalizedPath);
-    const lastModified = Date.now();
-
-    if (existing) {
-      this.metadata.set(normalizedPath, {
-        ...existing,
-        size,
-        lastModified,
-        handle: handle ?? existing.handle,
-      });
-      return;
-    }
-
-    const name = normalizedPath.split('/').filter(Boolean).pop() ?? normalizedPath;
-    this.metadata.set(normalizedPath, {
-      path: normalizedPath,
-      name,
-      size,
-      type: 'file',
-      lastModified,
-      handle,
-    });
-  }
-
-  private async removeFile(normalizedPath: string): Promise<void> {
-    const segments = normalizedPath.split('/').filter(Boolean);
-    if (segments.length === 0) {
-      throw wrapError(new Error('Cannot delete root directory'), ErrorCodes.FILE_ACCESS_ERROR, {
-        operation: 'delete',
-        path: normalizedPath,
-      });
-    }
-
-    try {
-      const dir = await this.walkToDirectory(segments.slice(0, -1), { create: false });
-      const fileName = segments[segments.length - 1];
-      await dir.removeEntry(fileName, { recursive: false });
-      this.handles.delete(normalizedPath);
-      this.metadata.delete(normalizedPath);
-      logger.debug(`Deleted file: ${normalizedPath}`);
-    } catch (error) {
-      throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
-        operation: 'delete',
-        path: normalizedPath,
-      });
-    }
-  }
-
-  /**
-   * Initialize the service by scanning and loading all files to WASM
-   */
-  async initialize(
-    directoryHandle: FileSystemDirectoryHandle,
-    scanOptions?: {
-      exclude?: string[];
-      includeHidden?: boolean;
-    },
-  ): Promise<FileServiceStats> {
-    const startTime = performance.now();
-
-    // Remember root directory so we can create new files/directories later
-    this.rootDirectoryHandle = directoryHandle;
-
-    // Initialize WASM once
-    if (!this.initialized) {
-      try {
-        wasm.ping(); // Test if WASM is ready
-      } catch {
-        await wasm.default();
-        wasm.init();
-      }
-      this.initialized = true;
-    }
-
-    // Scan files
-    logger.info('Starting file system scan');
-    const scanner = new FileScanner();
-
-    // Track scanning progress
-    let filesFoundCount = 0;
-    scanner.on('file', (metadata) => {
-      if (metadata.type === 'file') {
-        filesFoundCount++;
-        this.config.onScanProgress?.(filesFoundCount, metadata.path, metadata.size);
-      }
-    });
-
-    try {
-      for await (const file of scanner.scan(directoryHandle, scanOptions)) {
-        if (file.type === 'file' && file.handle) {
-          this.metadata.set(file.path, file);
-          this.handles.set(file.path, file.handle as FileSystemFileHandle);
+        try {
+            wasm.ping(); // Test if WASM is ready
+        } catch {
+            await wasm.default();
+            wasm.init();
         }
-      }
-    } catch (error) {
-      throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
-        operation: 'scan',
-        directory: directoryHandle.name,
-      });
+        this.wasmInitialized = true;
     }
-    logger.info(`Scanned ${this.metadata.size} files, loading to WASM...`);
 
-    // Load to WASM
-    const binaryFilesSkipped = await this.loadToWasm();
+    /**
+     * Read file content with line range
+     */
+    async readFile(params: ReadFileParams): Promise<string> {
+        const validated = readFileSchema.parse(params);
 
-    const stats: FileServiceStats = {
-      filesScanned: this.metadata.size,
-      filesLoaded: wasm.file_count(),
-      binaryFilesSkipped,
-      duration: performance.now() - startTime,
-      totalSize: Array.from(this.metadata.values()).reduce((sum, f) => sum + f.size, 0),
-    };
-
-    logger.info('File initialization complete', stats);
-    return stats;
-  }
-
-  /**
-   * Load all scanned files to WASM index
-   */
-  private async loadToWasm(): Promise<number> {
-    const paths = Array.from(this.handles.keys());
-    const batchSize = this.config.batchSize!;
-    let binaryFilesSkipped = 0;
-
-    wasm.begin_file_load();
-
-    try {
-      for (let i = 0; i < paths.length; i += batchSize) {
-        const batch = paths.slice(i, i + batchSize);
-
-        // Load contents and detect MIME types in parallel
-        const results = await Promise.all(
-          batch.map((path) =>
-            this.limit(async () => {
-              try {
-                const handle = this.handles.get(path)!;
-                const file = await handle.getFile();
-
-                // Check if file is binary before loading
-                const isBinary = await isBinaryFile(file);
-                if (isBinary) {
-                  logger.debug(`Skipping binary file: ${path}`);
-                  return null; // Skip binary files
-                }
-
-                const buffer = await file.arrayBuffer();
-
-                return {
-                  path,
-                  content: new Uint8Array(buffer),
-                };
-              } catch (error) {
-                logger.warn(`Failed to load ${path}:`, error);
-                return null;
-              }
-            }),
-          ),
-        );
-
-        // Filter out null results (binary files)
-        const validResults = results.filter((r): r is NonNullable<typeof r> => r !== null);
-        binaryFilesSkipped += results.length - validResults.length;
-
-        if (validResults.length > 0) {
-          // Extract data from valid results
-          const validPaths = validResults.map((r) => r.path);
-          const contents = validResults.map((r) => r.content);
-
-          // Prepare for WASM
-          const normalizedPaths = validPaths.map((p) => this.normalizePath(p));
-          const timestamps = validPaths.map(
-            (p) => this.metadata.get(p)?.lastModified ?? Date.now(),
-          );
-
-          // Load batch (contents is Uint8Array[] - wasm-bindgen will handle conversion)
-          wasm.load_file_batch(normalizedPaths, contents, timestamps);
+        // Validate line range
+        if (validated.lineRange.end < validated.lineRange.start) {
+            throw new Error(`Invalid line range: end (${validated.lineRange.end}) must be >= start (${validated.lineRange.start})`);
         }
 
-        // Progress callback
-        this.config.onProgress?.(Math.min(i + batchSize, paths.length), paths.length);
-      }
+        await this.ensureWasmInitialized();
 
-      wasm.commit_file_load();
-      return binaryFilesSkipped;
-    } catch (error) {
-      wasm.abort_file_load();
-      throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, { operation: 'load_to_wasm' });
-    }
-  }
+        try {
+            const normalizedPath = normalizePath(validated.path);
 
-  /**
-   * Get metadata for a specific file
-   */
-  getMetadata(path: string): FileMetadata | undefined {
-    return this.metadata.get(path);
-  }
-
-  /**
-   * Get all file metadata
-   */
-  getAllMetadata(): FileMetadata[] {
-    return Array.from(this.metadata.values());
-  }
-
-  /**
-   * Check if a file exists in our metadata
-   */
-  hasFile(path: string): boolean {
-    return this.metadata.has(path);
-  }
-
-  /**
-   * Get total number of files
-   */
-  get fileCount(): number {
-    return this.metadata.size;
-  }
-
-  /**
-   * Get staged modifications from WASM
-   * @returns Array of {path: string, content: Uint8Array} objects
-   */
-  async getStagedModifications(): Promise<Array<{ path: string; content: Uint8Array }>> {
-    try {
-      const modifications = wasm.get_staged_modifications();
-      return modifications as Array<{ path: string; content: Uint8Array }>;
-    } catch (error) {
-      throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
-        operation: 'get_staged_modifications'
-      });
-    }
-  }
-
-  /**
-   * Write modified files back to disk
-   * @param modifiedFiles Array of {path: string, content: Uint8Array} objects
-   * @returns Number of files successfully written
-   */
-  async writeModifiedFiles(
-    modifiedFiles: Array<{ path: string; content: Uint8Array | ArrayBuffer }>,
-  ): Promise<number> {
-    const results = await Promise.allSettled(
-      modifiedFiles.map(({ path, content }) =>
-        this.limit(async () => {
-          const normalizedPath = this.normalizePath(path);
-
-          const handle = await this.ensureFileHandle(normalizedPath);
-          if (!handle) {
-            logger.warn(
-              `Unable to obtain file handle for: ${path} (normalized: ${normalizedPath})`,
+            // Always use WASM's read_file_lines function with use_staged=true
+            const result = wasm.read_file_lines(
+                normalizedPath,
+                validated.lineRange.start,
+                validated.lineRange.end,
+                true // always use staged
             );
-            return false;
-          }
 
-          const writable = await handle.createWritable();
-          try {
-            const buffer =
-              content instanceof ArrayBuffer
-                ? content
-                : (content.buffer.slice(
-                  content.byteOffset,
-                  content.byteOffset + content.byteLength,
-                ) as ArrayBuffer);
-            await writable.write(buffer);
-            await writable.close();
-            this.updateMetadataAfterWrite(normalizedPath, buffer.byteLength);
-            logger.debug(`Successfully wrote file: ${normalizedPath}`);
-            return true;
-          } catch (error) {
-            await writable.abort();
-            throw error;
-          }
-        }),
-      ),
-    );
+            if (!result.content) {
+                throw new Error(`File not found: ${normalizedPath}`);
+            }
 
-    const errors = results
-      .map((result, i) => {
-        const originalPath = modifiedFiles[i].path;
-        const normalizedPath = this.normalizePath(originalPath);
-        return { result, originalPath, normalizedPath };
-      })
-      .filter(({ result }) => result.status === 'rejected')
-      .map(({ result, originalPath, normalizedPath }) => ({
-        path: originalPath,
-        normalizedPath,
-        error: (result as PromiseRejectedResult).reason,
-      }));
-
-    if (errors.length > 0) {
-      logger.error('Failed to write files:', errors);
-      throw wrapError(
-        new Error(`Failed to write ${errors.length} file(s)`),
-        ErrorCodes.FILE_ACCESS_ERROR,
-        {
-          operation: 'write',
-          errors: errors.map((e) => ({ path: e.path, message: getErrorMessage(e.error) })),
-        },
-      );
+            return result.content;
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
+                operation: 'read_file',
+                path: validated.path
+            });
+        }
     }
 
-    return results.filter((r) => r.status === 'fulfilled' && r.value).length;
-  }
+    /**
+     * Create or overwrite a file in the staged WASM index
+     */
+    async createFile(params: CreateFileParams): Promise<void> {
+        const validated = createFileSchema.parse(params);
+        const { path, content } = validated;
+        const normalizedPath = normalizePath(path);
 
-  /**
-   * Delete files from disk. Accepts normalized or raw paths.
-   */
-  async deleteFiles(paths: string[]): Promise<number> {
-    const results = await Promise.allSettled(
-      paths.map((p) =>
-        this.limit(async () => {
-          const normalizedPath = this.normalizePath(p);
+        await this.ensureWasmInitialized();
 
-          await this.removeFile(normalizedPath);
-          return normalizedPath;
-        }),
-      ),
-    );
+        try {
+            const contentBytes = encodeText(content);
 
-    const errors = results
-      .map((result, i) => ({ result, path: paths[i], normalized: this.normalizePath(paths[i]) }))
-      .filter(({ result }) => result.status === 'rejected')
-      .map(({ result, path, normalized }) => ({
-        path,
-        normalized,
-        error: (result as PromiseRejectedResult).reason,
-      }));
+            // Create file in staged WASM index only
+            const result = wasm.create_index_file(normalizedPath, contentBytes, true);
 
-    if (errors.length > 0) {
-      logger.error('Failed to delete files:', errors);
-      throw wrapError(
-        new Error(`Failed to delete ${errors.length} file(s)`),
-        ErrorCodes.FILE_ACCESS_ERROR,
-        {
-          operation: 'delete',
-          errors: errors.map((e) => ({ path: e.path, message: getErrorMessage(e.error) })),
-        },
-      );
+            logger.info(`Staged file creation: ${normalizedPath} (${result.size} bytes)`);
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
+                operation: 'create_file',
+                path
+            });
+        }
     }
 
-    return results.filter((r) => r.status === 'fulfilled').length;
-  }
+    /**
+     * Delete a file from the staged WASM index
+     */
+    async deleteFile(params: DeleteFileParams): Promise<void> {
+        const validated = deleteFileSchema.parse(params);
+        const normalizedPath = normalizePath(validated.path);
+
+        await this.ensureWasmInitialized();
+
+        try {
+            // Delete file from staged WASM index only
+            const result = wasm.delete_index_file(normalizedPath);
+
+            logger.info(`Staged file deletion: ${normalizedPath} (existed: ${result.existed})`);
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
+                operation: 'delete_file',
+                path: validated.path
+            });
+        }
+    }
+
+    /**
+     * Get staged modifications from WASM
+     */
+    async getStagedModifications(): Promise<Array<{ path: string; content: string }>> {
+        await this.ensureWasmInitialized();
+
+        try {
+            const modifications = wasm.get_staged_modifications() as Array<{ path: string; content: Uint8Array }>;
+
+            return modifications.map(mod => ({
+                path: mod.path,
+                content: decodeText(mod.content)
+            }));
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'get_staged_modifications'
+            });
+        }
+    }
+
+    /**
+     * Begin a manual staging session
+     */
+    async beginStaging(): Promise<void> {
+        await this.ensureWasmInitialized();
+
+        try {
+            wasm.begin_index_staging();
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'begin_staging'
+            });
+        }
+    }
+
+    /**
+     * Commit staged changes to active index and write to disk
+     */
+    async commitChanges(): Promise<{ modified: Array<{ path: string; content: string }>; fileCount: number; deleted: string[] }> {
+        await this.ensureWasmInitialized();
+
+        try {
+            // Commit staging to active index
+            const result = wasm.commit_index_staging() as {
+                fileCount: number;
+                modified: Array<{ path: string; content: Uint8Array }>;
+                deleted: string[];
+            };
+
+            // Write modified files to disk
+            if (result.modified.length > 0) {
+                const writtenCount = await this.fileManager.writeModifiedFiles(result.modified);
+                logger.info(`Wrote ${writtenCount} files to disk`);
+            }
+
+            // Delete files that were marked for deletion
+            if (result.deleted.length > 0) {
+                for (const path of result.deleted) {
+                    try {
+                        await this.fileManager.removeFile(path);
+                        logger.info(`Deleted file: ${path}`);
+                    } catch (error) {
+                        logger.warn(`Failed to delete file: ${path}`, error);
+                    }
+                }
+            }
+
+            return {
+                fileCount: result.fileCount,
+                modified: result.modified.map(file => ({
+                    path: file.path,
+                    content: decodeText(file.content)
+                })),
+                deleted: result.deleted
+            };
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'commit_changes'
+            });
+        }
+    }
+
+    /**
+     * Revert active staging session without committing
+     */
+    async revertChanges(): Promise<void> {
+        await this.ensureWasmInitialized();
+
+        try {
+            wasm.revert_index_staging();
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'revert_changes'
+            });
+        }
+    }
+
+
+
+    /**
+     * Get the underlying FileManager instance
+     */
+    getFileManager(): FileManager {
+        return this.fileManager;
+    }
+
+    /**
+     * Get metadata for a specific file
+     */
+    getMetadata(path: string): FileMetadata | undefined {
+        return this.fileManager.getMetadata(path);
+    }
+
+    /**
+     * Get all file metadata
+     */
+    getAllMetadata(): FileMetadata[] {
+        return this.fileManager.getAllMetadata();
+    }
+
+    /**
+     * Check if a file exists in our metadata
+     */
+    hasFile(path: string): boolean {
+        return this.fileManager.hasFile(path);
+    }
+
+    /**
+     * Get total number of files
+     */
+    get fileCount(): number {
+        return this.fileManager.fileCount;
+    }
+
+    /**
+     * Initialize the file system by scanning a directory
+     */
+    async initialize(
+        directoryHandle: FileSystemDirectoryHandle,
+        scanOptions?: {
+            exclude?: string[];
+            includeHidden?: boolean;
+        }
+    ): Promise<import('./file-manager.js').FileManagerStats> {
+        await this.ensureWasmInitialized();
+        return this.fileManager.initialize(directoryHandle, scanOptions);
+    }
+
+    /**
+     * Get all tools for AI integration
+     */
+    getTools() {
+        return {
+            readFile: {
+                description: 'Read specific lines from a file in the staged WASM index. The file must be loaded into WASM memory first. Useful for examining code sections, configuration files, or any text content within a specific line range.',
+                parameters: readFileSchema,
+                execute: async (params: ReadFileParams) => {
+                    return this.readFile(params);
+                }
+            },
+            createFile: {
+                description: 'Create a new file or overwrite an existing file with text content. The file is immediately written to disk, and parent directories are created automatically if they don\'t exist. Only supports text files (UTF-8 encoding).',
+                parameters: createFileSchema,
+                execute: async (params: CreateFileParams) => {
+                    await this.createFile(params);
+                    return { success: true };
+                }
+            },
+            deleteFile: {
+                description: 'Delete a file from the file system. The file must exist and be accessible. This operation is permanent and cannot be undone. The file is removed from both disk and any internal caches.',
+                parameters: deleteFileSchema,
+                execute: async (params: DeleteFileParams) => {
+                    await this.deleteFile(params);
+                    return { success: true };
+                }
+            },
+            getStagedModifications: {
+                description: 'Get all files that have been modified and staged in WASM memory but not yet written to disk. Returns an array of file paths and their text content. Useful for reviewing changes before committing them or for batch operations.',
+                parameters: z.object({}),
+                execute: async () => {
+                    return this.getStagedModifications();
+                }
+            },
+            beginStaging: {
+                description: 'Begin a manual staging session. Call this before making multiple file modifications that you want to group together. Changes will be held in memory until committed with commitChanges or reverted with revertChanges.',
+                parameters: z.object({}),
+                execute: async () => {
+                    await this.beginStaging();
+                    return { success: true };
+                }
+            },
+            revertChanges: {
+                description: 'Revert all staged changes without committing. Discards all modifications made since beginStaging was called. Useful for canceling a batch operation.',
+                parameters: z.object({}),
+                execute: async () => {
+                    await this.revertChanges();
+                    return { success: true };
+                }
+            },
+            commitChanges: {
+                description: 'Commit all staged changes to the active WASM index and write to disk. Returns modified files, deleted files, and total file count. This operation: 1) Commits staged changes to WASM, 2) Writes modified files to disk, 3) Deletes removed files from disk.',
+                parameters: z.object({}),
+                execute: async () => {
+                    const result = await this.commitChanges();
+                    logger.info(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`);
+                    return result;
+                }
+            }
+        };
+    }
 }
+
+// Export singleton instance with default config
+export const fileService = new FileService();
+
+// Export individual tool functions for easier integration
+export const readFile = (params: ReadFileParams) => fileService.readFile(params);
+export const createFile = (params: CreateFileParams) => fileService.createFile(params);
+export const deleteFile = (params: DeleteFileParams) => fileService.deleteFile(params);
+export const getStagedModifications = () => fileService.getStagedModifications();
+export const beginStaging = async () => fileService.beginStaging();
+export const commitChanges = () => fileService.commitChanges();
+export const revertChanges = async () => fileService.revertChanges();
+export const getTools = () => fileService.getTools();

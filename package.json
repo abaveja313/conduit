@@ -11,6 +11,11 @@
     "e2e": "turbo run e2e",
     "prepare": "husky"
   },
+  "pnpm": {
+    "overrides": {
+      "jsondiffpatch": ">=0.7.2"
+    }
+  },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",
     "@commitlint/config-conventional": "^19.5.0",
