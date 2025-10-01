@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { FileService, FileScanner } from '@conduit/fs';
-import type { FileServiceStats, ScanOptions, FileMetadata } from '@conduit/fs';
+import type { FileManagerStats, ScanOptions, FileMetadata } from '@conduit/fs';
 import Modal from './Modal';
 import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';
@@ -42,7 +42,7 @@ export default function FileUploader() {
     const [wasmModule, setWasmModule] = useState<WasmModule | null>(null);
     const [scanning, setScanning] = useState(false);
     const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
-    const [stats, setStats] = useState<FileServiceStats | null>(null);
+    const [stats, setStats] = useState<FileManagerStats | null>(null);
     const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
     const [scanningStats, setScanningStats] = useState<ScanningStats>({
         filesFound: 0,
