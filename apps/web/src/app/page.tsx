@@ -129,6 +129,7 @@ function MessageContentRenderer({
 export default function Home() {
   const [isSetupComplete, setIsSetupComplete] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [anthropicKey, setAnthropicKey] = useState("")
   const [fileChanges, setFileChanges] = useState<FileChange[]>([])
   const [isStagingCollapsed, setIsStagingCollapsed] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -162,10 +163,12 @@ export default function Home() {
 
   const handleSetupComplete = (config: {
     provider: "anthropic"
+    apiKey: string
     model: string
     fileService: FileService
   }) => {
     setIsSetupComplete(true)
+    setAnthropicKey(config.apiKey)
     setCurrentModel(config.model)
     setFileService(config.fileService)
     // Load initial files
@@ -239,8 +242,6 @@ export default function Home() {
     setActiveTab("modifications")
 
     try {
-      const apiKey = localStorage.getItem('anthropicApiKey') || ''
-
       const apiMessages = messages.concat(userMessage).map(msg => ({
         role: msg.role as 'user' | 'assistant',
         content: msg.content.replace(/\[TOOL_CALL:\d+(?::COMPLETE)?\]/g, '').trim()
@@ -258,7 +259,7 @@ export default function Home() {
       // Use the new streaming function
       const stream = streamAnthropicResponse(
         apiMessages,
-        apiKey,
+        anthropicKey,
         currentModel,
         fileService
       )
@@ -466,6 +467,7 @@ export default function Home() {
           handleSetupComplete(config)
           setShowSettings(false)
         }}
+        currentApiKey={anthropicKey}
       />
 
       <div
