@@ -218,6 +218,15 @@ export class FileManager {
     const batchSize = this.config.batchSize!;
     let binaryFilesSkipped = 0;
 
+    // Ensure WASM is initialized before using it
+    try {
+      wasm.ping();
+    } catch {
+      console.log('WASM not initialized in loadToWasm, initializing now...');
+      await wasm.default();
+      wasm.init();
+    }
+
     wasm.begin_file_load();
 
     try {
@@ -269,7 +278,19 @@ export class FileManager {
           );
 
           // Load batch (contents is Uint8Array[] - wasm-bindgen will handle conversion)
-          wasm.load_file_batch(normalizedPaths, contents, timestamps);
+          try {
+            wasm.load_file_batch(normalizedPaths, contents, timestamps);
+          } catch (batchError) {
+            console.error('Error loading file batch:', batchError);
+            console.log('Batch details:', {
+              pathsCount: normalizedPaths.length,
+              contentsCount: contents.length,
+              timestampsCount: timestamps.length,
+              firstPath: normalizedPaths[0],
+              firstContentLength: contents[0]?.length
+            });
+            throw batchError;
+          }
         }
 
         // Progress callback

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/tooltip"
 import { FileService } from "@conduit/fs"
 import { formatFileSize } from "@conduit/fs"
+import * as wasm from "@conduit/wasm"
 
 interface SetupModalProps {
     open: boolean
@@ -111,7 +112,21 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
         if (anthropicKey) {
             setApiKey(anthropicKey)
         }
-    }, [])
+
+        // Initialize WASM when modal opens
+        const initWasm = async () => {
+            try {
+                await wasm.default()
+                wasm.init()
+                console.log('WASM initialized in SetupModal')
+            } catch (err) {
+                console.error('Failed to initialize WASM in SetupModal:', err)
+            }
+        }
+        if (open) {
+            initWasm()
+        }
+    }, [open])
 
     useEffect(() => {
         const models = MODELS[provider]
@@ -156,31 +171,47 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
     }
 
     const handleScan = async () => {
-        if (!directory || isScanning) return
+        console.log('handleScan called', { directory: !!directory, isScanning })
 
+        if (!directory || isScanning) {
+            console.log('Scan blocked:', { directory: !!directory, isScanning })
+            return
+        }
+
+        console.log('Starting scan...')
         setIsScanning(true)
         setScanProgress({ phase: "scanning", filesFound: 0 })
         setError(null)
 
-        // Small delay to ensure UI updates before heavy operation
-        await new Promise(resolve => setTimeout(resolve, 100))
-
         try {
-            // Begin staging before loading files into WASM
-            await fileService.beginStaging()
+            // Test WASM first
+            try {
+                wasm.ping()
+                console.log('WASM ping successful')
+            } catch {
+                console.error('WASM not initialized, attempting to initialize now...')
+                await wasm.default()
+                wasm.init()
+                console.log('WASM initialized successfully')
+            }
+
+            // Small delay to ensure UI updates before heavy operation
+            await new Promise(resolve => setTimeout(resolve, 100))
 
             // Initialize the file service - callbacks already configured in constructor
+            console.log('Calling fileService.initialize...')
             const stats = await fileService.initialize(directory)
 
             // Ensure final stats are shown
             setScanProgress(prev => prev ? { ...prev, filesFound: stats.filesScanned, loaded: stats.filesLoaded, total: stats.filesScanned } : null)
             setScanStats(stats)
-            setIsScanning(false)
             setHasScanned(true)
+            console.log('Scan completed successfully', stats)
         } catch (err) {
-            setIsScanning(false)
             setError(err instanceof Error ? err.message : "Failed to scan directory")
-            console.error("Scan failed:", err)
+            console.error("Scan failed with full error:", err)
+        } finally {
+            setIsScanning(false)
         }
     }
 
@@ -238,7 +269,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
     }
 
     return (
-        <Dialog open={open} onOpenChange={() => { }}>
+        <Dialog open={open} onOpenChange={() => { /* prevent closing */ }}>
             <DialogContent className="sm:max-w-[500px] overflow-hidden p-0" hideCloseButton>
                 <div className="relative" style={{ height: "600px" }}>
                     <AnimatePresence mode="wait">
@@ -452,35 +483,34 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                 )}
 
                                 {step === "directory" && (
-                                    directory && !hasScanned ? (
-                                        <Button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.preventDefault()
-                                                e.stopPropagation()
-                                                handleScan()
-                                            }}
-                                            disabled={isScanning}
-                                        >
-                                            {isScanning ? (
-                                                <>
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                    Scanning...
-                                                </>
-                                            ) : (
-                                                "Scan"
-                                            )}
-                                        </Button>
-                                    ) : (
-                                        <Button
-                                            type="button"
-                                            onClick={handleNext}
-                                            disabled={!hasScanned}
-                                        >
-                                            Next
-                                            <ChevronRight className="h-4 w-4" />
-                                        </Button>
-                                    )
+                                    <>
+                                        {directory && !hasScanned && (
+                                            <Button
+                                                type="button"
+                                                onClick={handleScan}
+                                                disabled={isScanning || !directory}
+                                            >
+                                                {isScanning ? (
+                                                    <>
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                        Scanning...
+                                                    </>
+                                                ) : (
+                                                    "Scan"
+                                                )}
+                                            </Button>
+                                        )}
+                                        {hasScanned && (
+                                            <Button
+                                                type="button"
+                                                onClick={handleNext}
+                                                disabled={false}
+                                            >
+                                                Next
+                                                <ChevronRight className="h-4 w-4" />
+                                            </Button>
+                                        )}
+                                    </>
                                 )}
 
                                 {step === "provider" && (
