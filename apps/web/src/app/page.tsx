@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useFileChanges } from "@/hooks/useFileChanges"
 import { formatDuration, formatMemory } from "@/lib/format"
 import { DEFAULT_DIVIDER_POSITION, COMMIT_BANNER_TIMEOUT, STATUS_COLORS } from "@/lib/constants"
+import * as wasm from "@conduit/wasm"
 
 interface FileChange {
   path: string
@@ -182,6 +183,20 @@ export default function Home() {
 
   // Use the file changes hook
   const { fileChanges, expanded, updateFileChanges, toggleExpanded, setFileChanges, clearExpanded } = useFileChanges(fileService)
+
+  // Initialize WASM on page load
+  useEffect(() => {
+    const initWasm = async () => {
+      try {
+        await wasm.default()
+        wasm.init()
+        console.log('WASM initialized')
+      } catch (err) {
+        console.error('Failed to initialize WASM:', err)
+      }
+    }
+    initWasm()
+  }, [])
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1]
@@ -736,30 +751,35 @@ export default function Home() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {messages.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
-              <form onSubmit={handleSubmit} className="w-full max-w-2xl px-4">
-                <div className="relative">
-                  <Input
-                    type="text"
-                    placeholder="Ask me to read, create, or modify files..."
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    disabled={isLoading}
-                    className="pr-24 h-12 text-base"
-                  />
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground px-2 py-1 bg-secondary rounded">
-                      Claude
-                    </span>
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={isLoading || !input.trim()}
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
+              <div className="w-full max-w-2xl px-4">
+                <div className="flex flex-col items-center gap-8 mb-8">
+                  <Train className="h-16 w-16 text-muted-foreground" />
                 </div>
-              </form>
+                <form onSubmit={handleSubmit}>
+                  <div className="relative">
+                    <Input
+                      type="text"
+                      placeholder="Ask me to read, create, or modify files..."
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      disabled={isLoading}
+                      className="pr-24 h-12 text-base"
+                    />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground px-2 py-1 bg-secondary rounded">
+                        Claude
+                      </span>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={isLoading || !input.trim()}
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </form>
+              </div>
             </div>
           ) : (
             <>
