@@ -7,7 +7,7 @@ pub mod manager;
 pub mod path;
 
 pub use index::{FileEntry, Index};
-pub use manager::IndexManager;
+pub use manager::{FileChangeStats, IndexManager};
 pub use path::{normalize_path, PathKey};
 
 pub mod prelude {

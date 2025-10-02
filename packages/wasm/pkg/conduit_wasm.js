@@ -346,6 +346,47 @@ export function get_staged_deletions() {
 }
 
 /**
+ * Get summary of all modified files with line change statistics.
+ * Returns an array of objects with path, linesAdded, linesRemoved, and status.
+ * @returns {any}
+ */
+export function get_modified_files_summary() {
+    const ret = wasm.get_modified_files_summary();
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Get detailed diff for a specific file.
+ * Returns regions of changes with line numbers and content.
+ * @param {string} path
+ * @returns {any}
+ */
+export function get_file_diff(path) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.get_file_diff(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Get staged modifications with both active and staged content for diff preview.
+ * @returns {any}
+ */
+export function get_staged_modifications_with_active() {
+    const ret = wasm.get_staged_modifications_with_active();
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Get the number of files in the active index.
  * @returns {number}
  */
@@ -497,6 +538,122 @@ export function delete_index_file(path) {
     return takeFromExternrefTable0(ret[0]);
 }
 
+/**
+ * Replace specific lines in a file by line number.
+ *
+ * # Arguments
+ * * `path` - The file path to modify
+ * * `replacements` - JavaScript array of [lineNumber, newContent] pairs (line numbers are 1-based)
+ * * `use_staged` - If true, modify staged index; otherwise modify active index
+ *
+ * # Returns
+ * Object containing path, lines_replaced, and total_lines
+ * @param {string} path
+ * @param {Array<any>} replacements
+ * @param {boolean} use_staged
+ * @returns {any}
+ */
+export function replace_lines(path, replacements, use_staged) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.replace_lines(ptr0, len0, replacements, use_staged);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+let cachedUint32ArrayMemory0 = null;
+
+function getUint32ArrayMemory0() {
+    if (cachedUint32ArrayMemory0 === null || cachedUint32ArrayMemory0.byteLength === 0) {
+        cachedUint32ArrayMemory0 = new Uint32Array(wasm.memory.buffer);
+    }
+    return cachedUint32ArrayMemory0;
+}
+
+function passArray32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getUint32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+/**
+ * Delete specific lines from a file.
+ *
+ * # Arguments
+ * * `path` - The file path to modify
+ * * `line_numbers` - Array of line numbers to delete (1-based)
+ * * `use_staged` - If true, modify staged index; otherwise modify active index
+ * @param {string} path
+ * @param {Uint32Array} line_numbers
+ * @param {boolean} use_staged
+ * @returns {any}
+ */
+export function delete_lines(path, line_numbers, use_staged) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArray32ToWasm0(line_numbers, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.delete_lines(ptr0, len0, ptr1, len1, use_staged);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Insert new content before a specific line.
+ *
+ * # Arguments
+ * * `path` - The file path to modify
+ * * `line_number` - Line number where to insert (1-based)
+ * * `content` - Content to insert (can be multi-line)
+ * * `use_staged` - If true, modify staged index; otherwise modify active index
+ * @param {string} path
+ * @param {number} line_number
+ * @param {string} content
+ * @param {boolean} use_staged
+ * @returns {any}
+ */
+export function insert_before_line(path, line_number, content, use_staged) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.insert_before_line(ptr0, len0, line_number, ptr1, len1, use_staged);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Insert new content after a specific line.
+ *
+ * # Arguments
+ * * `path` - The file path to modify
+ * * `line_number` - Line number after which to insert (1-based)
+ * * `content` - Content to insert (can be multi-line)
+ * * `use_staged` - If true, modify staged index; otherwise modify active index
+ * @param {string} path
+ * @param {number} line_number
+ * @param {string} content
+ * @param {boolean} use_staged
+ * @returns {any}
+ */
+export function insert_after_line(path, line_number, content, use_staged) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.insert_after_line(ptr0, len0, line_number, ptr1, len1, use_staged);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
 const EXPECTED_RESPONSE_TYPES = new Set(['basic', 'cors', 'default']);
 
 async function __wbg_load(module, imports) {
@@ -548,6 +705,10 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_get_0da715ceaecea5c8 = function(arg0, arg1) {
         const ret = arg0[arg1 >>> 0];
+        return ret;
+    };
+    imports.wbg.__wbg_isArray_030cce220591fb41 = function(arg0) {
+        const ret = Array.isArray(arg0);
         return ret;
     };
     imports.wbg.__wbg_length_186546c51cd61acd = function(arg0) {
@@ -603,6 +764,12 @@ function __wbg_get_imports() {
         getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
     };
+    imports.wbg.__wbg_wbindgennumberget_f74b4c7525ac05cb = function(arg0, arg1) {
+        const obj = arg1;
+        const ret = typeof(obj) === 'number' ? obj : undefined;
+        getDataViewMemory0().setFloat64(arg0 + 8 * 1, isLikeNone(ret) ? 0 : ret, true);
+        getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
+    };
     imports.wbg.__wbg_wbindgenstringget_0f16a6ddddef376f = function(arg0, arg1) {
         const obj = arg1;
         const ret = typeof(obj) === 'string' ? obj : undefined;
@@ -647,6 +814,7 @@ function __wbg_finalize_init(instance, module) {
     __wbg_init.__wbindgen_wasm_module = module;
     cachedDataViewMemory0 = null;
     cachedFloat64ArrayMemory0 = null;
+    cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
 
 

@@ -48,6 +48,20 @@ export function get_staged_modifications(): any;
  */
 export function get_staged_deletions(): any;
 /**
+ * Get summary of all modified files with line change statistics.
+ * Returns an array of objects with path, linesAdded, linesRemoved, and status.
+ */
+export function get_modified_files_summary(): any;
+/**
+ * Get detailed diff for a specific file.
+ * Returns regions of changes with line numbers and content.
+ */
+export function get_file_diff(path: string): any;
+/**
+ * Get staged modifications with both active and staged content for diff preview.
+ */
+export function get_staged_modifications_with_active(): any;
+/**
  * Get the number of files in the active index.
  */
 export function file_count(): number;
@@ -107,6 +121,47 @@ export function find_in_files(pattern: string, use_staged: boolean, case_insensi
  * Delete a file from the staged index, if it exists.
  */
 export function delete_index_file(path: string): any;
+/**
+ * Replace specific lines in a file by line number.
+ *
+ * # Arguments
+ * * `path` - The file path to modify
+ * * `replacements` - JavaScript array of [lineNumber, newContent] pairs (line numbers are 1-based)
+ * * `use_staged` - If true, modify staged index; otherwise modify active index
+ *
+ * # Returns
+ * Object containing path, lines_replaced, and total_lines
+ */
+export function replace_lines(path: string, replacements: Array<any>, use_staged: boolean): any;
+/**
+ * Delete specific lines from a file.
+ *
+ * # Arguments
+ * * `path` - The file path to modify
+ * * `line_numbers` - Array of line numbers to delete (1-based)
+ * * `use_staged` - If true, modify staged index; otherwise modify active index
+ */
+export function delete_lines(path: string, line_numbers: Uint32Array, use_staged: boolean): any;
+/**
+ * Insert new content before a specific line.
+ *
+ * # Arguments
+ * * `path` - The file path to modify
+ * * `line_number` - Line number where to insert (1-based)
+ * * `content` - Content to insert (can be multi-line)
+ * * `use_staged` - If true, modify staged index; otherwise modify active index
+ */
+export function insert_before_line(path: string, line_number: number, content: string, use_staged: boolean): any;
+/**
+ * Insert new content after a specific line.
+ *
+ * # Arguments
+ * * `path` - The file path to modify  
+ * * `line_number` - Line number after which to insert (1-based)
+ * * `content` - Content to insert (can be multi-line)
+ * * `use_staged` - If true, modify staged index; otherwise modify active index
+ */
+export function insert_after_line(path: string, line_number: number, content: string, use_staged: boolean): any;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -123,6 +178,9 @@ export interface InitOutput {
   readonly revert_index_staging: () => [number, number];
   readonly get_staged_modifications: () => [number, number, number];
   readonly get_staged_deletions: () => [number, number, number];
+  readonly get_modified_files_summary: () => [number, number, number];
+  readonly get_file_diff: (a: number, b: number) => [number, number, number];
+  readonly get_staged_modifications_with_active: () => [number, number, number];
   readonly file_count: () => number;
   readonly clear_index: () => [number, number];
   readonly get_index_stats: () => [number, number, number];
@@ -131,6 +189,10 @@ export interface InitOutput {
   readonly list_files: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
   readonly find_in_files: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
   readonly delete_index_file: (a: number, b: number) => [number, number, number];
+  readonly replace_lines: (a: number, b: number, c: any, d: number) => [number, number, number];
+  readonly delete_lines: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+  readonly insert_before_line: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
+  readonly insert_after_line: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;

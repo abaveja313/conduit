@@ -121,6 +121,52 @@ export function get_staged_modifications(): Array<{ path: string; content: Uint8
 export function get_staged_deletions(): string[];
 
 /**
+ * Get staged modifications with both active and staged content for diff preview
+ * @returns Array of objects with path, stagedContent, and optionally activeContent
+ * @throws {Error} If staging is not active
+ */
+export function get_staged_modifications_with_active(): Array<{
+  path: string;
+  stagedContent: Uint8Array;
+  activeContent?: Uint8Array;
+}>;
+
+/**
+ * Get summary of all modified files with line change statistics
+ * @returns Array of file summaries with change stats
+ * @throws {Error} If staging is not active
+ */
+export function get_modified_files_summary(): Array<{
+  path: string;
+  linesAdded: number;
+  linesRemoved: number;
+  status: 'created' | 'modified' | 'deleted';
+}>;
+
+/**
+ * Get detailed diff for a specific file
+ * @param path - File path to diff
+ * @returns Detailed diff with regions of changes
+ * @throws {Error} If file not found or staging not active
+ */
+export function get_file_diff(path: string): {
+  path: string;
+  stats: {
+    linesAdded: number;
+    linesRemoved: number;
+    regionsChanged: number;
+  };
+  regions: Array<{
+    originalStart: number;
+    linesRemoved: number;
+    modifiedStart: number;
+    linesAdded: number;
+    removedLines: string[];
+    addedLines: string[];
+  }>;
+};
+
+/**
  * Create or overwrite a file in the staged index.
  * @param path - File path to create
  * @param content - Optional file content
@@ -147,6 +193,90 @@ export function create_index_file(
 export function delete_index_file(path: string): {
   path: string;
   existed: boolean;
+};
+
+/**
+ * Replace specific lines in a file by line number.
+ * @param path - The file path to modify
+ * @param replacements - Array of [lineNumber, newContent] pairs (line numbers are 1-based)
+ * @param use_staged - If true, modify staged index; otherwise modify active index
+ * @returns Object containing path, linesReplaced, linesAdded, totalLines, and originalLines
+ * @throws {Error} If file not found or line numbers invalid
+ */
+export function replace_lines(
+  path: string,
+  replacements: Array<[number, string]>,
+  use_staged: boolean
+): {
+  path: string;
+  linesReplaced: number;
+  linesAdded: number;
+  totalLines: number;
+  originalLines: number;
+};
+
+/**
+ * Delete specific lines from a file.
+ * @param path - The file path to modify
+ * @param line_numbers - Array of line numbers to delete (1-based)
+ * @param use_staged - If true, modify staged index; otherwise modify active index
+ * @returns Same as replace_lines - object with modification stats
+ * @throws {Error} If file not found or line numbers invalid
+ */
+export function delete_lines(
+  path: string,
+  line_numbers: number[],
+  use_staged: boolean
+): {
+  path: string;
+  linesReplaced: number;
+  linesAdded: number;
+  totalLines: number;
+  originalLines: number;
+};
+
+/**
+ * Insert content before a specific line.
+ * @param path - The file path to modify
+ * @param line_number - Line number where to insert (1-based)
+ * @param content - Content to insert (can be multi-line)
+ * @param use_staged - If true, modify staged index; otherwise modify active index
+ * @returns Same as replace_lines - object with modification stats
+ * @throws {Error} If file not found or line number invalid
+ */
+export function insert_before_line(
+  path: string,
+  line_number: number,
+  content: string,
+  use_staged: boolean
+): {
+  path: string;
+  linesReplaced: number;
+  linesAdded: number;
+  totalLines: number;
+  originalLines: number;
+};
+
+/**
+ * Insert content after a specific line.
+ * @param path - The file path to modify
+ * @param line_number - Line number after which to insert (1-based)
+ * @param content - Content to insert (can be multi-line)
+ * @param use_staged - If true, modify staged index; otherwise modify active index
+ * @returns Same as replace_lines - object with modification stats
+ * @throws {Error} If file not found or line number invalid
+ */
+export function insert_after_line(
+  path: string,
+  line_number: number,
+  content: string,
+  use_staged: boolean
+): {
+  path: string;
+  linesReplaced: number;
+  linesAdded: number;
+  totalLines: number;
+  originalLines: number;
 };
 
 /**
