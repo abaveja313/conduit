@@ -31,6 +31,7 @@ interface SetupModalProps {
         mode: "read" | "readwrite"
         fileService: FileService
     }) => void
+    currentApiKey?: string
 }
 
 type Step = "welcome" | "directory" | "provider"
@@ -45,7 +46,7 @@ const MODELS = {
     ]
 }
 
-export function SetupModal({ open, onComplete }: SetupModalProps) {
+export function SetupModal({ open, onComplete, currentApiKey }: SetupModalProps) {
     const [step, setStep] = useState<Step>("welcome")
     const [provider] = useState<"anthropic">("anthropic")
     const [apiKey, setApiKey] = useState("")
@@ -106,12 +107,16 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
     }))
 
     useEffect(() => {
-        const anthropicKey = localStorage.getItem("anthropicApiKey")
-
-        if (anthropicKey) {
-            setApiKey(anthropicKey)
+        // Use currentApiKey prop if provided, otherwise try localStorage for backwards compatibility
+        if (currentApiKey) {
+            setApiKey(currentApiKey)
+        } else {
+            const anthropicKey = localStorage.getItem("anthropicApiKey")
+            if (anthropicKey) {
+                setApiKey(anthropicKey)
+            }
         }
-    }, [])
+    }, [currentApiKey])
 
     useEffect(() => {
         const models = MODELS[provider]
@@ -183,8 +188,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
     const handleSubmit = async () => {
         if (!apiKey || !directory || !hasScanned) return
 
-        localStorage.setItem("anthropicApiKey", apiKey)
-        localStorage.setItem("lastProvider", "anthropic")
+        // Pass the apiKey through onComplete callback instead of storing in localStorage
         onComplete({ provider, apiKey, model, directory, mode, fileService })
     }
 
