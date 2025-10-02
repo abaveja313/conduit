@@ -5,8 +5,9 @@ pub mod tools;
 pub use error::{Error, Result};
 pub use fs::prelude::*;
 pub use tools::{
-    search_regions, AbortFlag, ByteSpan, LineIndex, LineSpan, Match, MatchRegion, PreviewBuilder,
-    PreviewHunk, ReadRequest, ReadResponse, RegexEngineOpts, RegexMatcher,
+    apply_line_operations, compute_diff, compute_diffs, search_regions, AbortFlag, ByteSpan,
+    DiffRegion, DiffStats, FileDiff, LineIndex, LineOperation, LineSpan, Match, MatchRegion,
+    PreviewBuilder, PreviewHunk, ReadRequest, ReadResponse, RegexEngineOpts, RegexMatcher,
 };
 
 /// Selects which buffer set to operate on.
@@ -199,6 +200,32 @@ pub struct DeleteResponse {
     pub existed: bool,
 }
 
+/// Request to replace specific lines in a file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ReplaceLinesRequest {
+    /// Path of the file to modify
+    pub path: PathKey,
+    /// Map of line numbers (1-based) to new content
+    pub replacements: Vec<(usize, String)>,
+    /// Which buffer to target (typically Staged)
+    pub where_: SearchSpace,
+}
+
+/// Response after replacing lines in a file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ReplaceLinesResponse {
+    /// Path of the modified file
+    pub path: PathKey,
+    /// Number of lines replaced
+    pub lines_replaced: usize,
+    /// Number of lines added (when replacement has more lines than original)
+    pub lines_added: isize,
+    /// Total lines in the file after replacement
+    pub total_lines: usize,
+    /// Original line count before replacement
+    pub original_lines: usize,
+}
+
 /// Search files and return preview excerpts.
 pub trait FindTool {
     fn run_find(&mut self, req: FindRequest, abort: &AbortFlag) -> Result<FindResponse>;
@@ -230,12 +257,92 @@ pub trait DeleteTool {
     fn run_delete(&mut self, req: DeleteRequest) -> Result<DeleteResponse>;
 }
 
+/// Replace specific lines in files.
+pub trait ReplaceLinesTool {
+    fn run_replace_lines(&mut self, req: ReplaceLinesRequest) -> Result<ReplaceLinesResponse>;
+}
+
+/// Delete specific lines from files.
+pub trait DeleteLinesTool {
+    fn run_delete_lines(&mut self, req: DeleteLinesRequest) -> Result<ReplaceLinesResponse>;
+}
+
+/// Insert lines into files.
+pub trait InsertLinesTool {
+    fn run_insert_lines(&mut self, req: InsertLinesRequest) -> Result<ReplaceLinesResponse>;
+}
+
+/// Compute diffs between active and staged versions of files.
+pub trait DiffTool {
+    /// Get summary of all modified files with line change statistics
+    fn get_modified_files_summary(&self) -> Result<Vec<ModifiedFileSummary>>;
+
+    /// Get detailed diff for a specific file
+    fn get_file_diff(&self, path: &PathKey) -> Result<FileDiff>;
+}
+
+/// Summary of changes for a modified file
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ModifiedFileSummary {
+    /// Path of the file
+    pub path: PathKey,
+    /// Number of lines added
+    pub lines_added: usize,
+    /// Number of lines removed
+    pub lines_removed: usize,
+    /// File status (created, modified, deleted)
+    pub status: FileChangeStatus,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FileChangeStatus {
+    Created,
+    Modified,
+    Deleted,
+}
+
+/// Request to delete specific lines from a file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DeleteLinesRequest {
+    /// Path of the file to modify
+    pub path: PathKey,
+    /// Line numbers to delete (1-based)
+    pub line_numbers: Vec<usize>,
+    /// Which buffer to target
+    pub where_: SearchSpace,
+}
+
+/// Request to insert lines into a file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct InsertLinesRequest {
+    /// Path of the file to modify
+    pub path: PathKey,
+    /// Line number where to insert (1-based)
+    pub line_number: usize,
+    /// Content to insert
+    pub content: String,
+    /// Insert before or after the line
+    pub position: InsertPosition,
+    /// Which buffer to target
+    pub where_: SearchSpace,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub enum InsertPosition {
+    Before,
+    After,
+}
+
 pub mod prelude {
     //! Common imports for consumers of this crate.
     pub use super::{
-        AbortFlag, CreateRequest, CreateResponse, CreateTool, DeleteRequest, DeleteResponse,
-        DeleteTool, EditItem, EditRequest, EditResponse, EditTool, Error, FindRequest,
-        FindResponse, FindTool, Index, IndexManager, Match, PathKey, PreviewBuilder, PreviewHunk,
-        ReadRequest, ReadResponse, ReadTool, RegexEngineOpts, Result, SearchSpace,
+        AbortFlag, CreateRequest, CreateResponse, CreateTool, DeleteLinesRequest, DeleteLinesTool,
+        DeleteRequest, DeleteResponse, DeleteTool, DiffTool, EditItem, EditRequest, EditResponse,
+        EditTool, Error, FileChangeStatus, FileDiff, FindRequest, FindResponse, FindTool, Index,
+        IndexManager, InsertLinesRequest, InsertLinesTool, InsertPosition, Match,
+        ModifiedFileSummary, PathKey, PreviewBuilder, PreviewHunk, ReadRequest, ReadResponse,
+        ReadTool, RegexEngineOpts, ReplaceLinesRequest, ReplaceLinesResponse, ReplaceLinesTool,
+        Result, SearchSpace,
     };
 }

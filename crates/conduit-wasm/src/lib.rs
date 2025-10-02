@@ -1,7 +1,4 @@
-//! WASM facade for Conduit core functionality.
-//!
-//! This crate provides the WASM bindings for the Conduit core,
-//! managing global state and exposing a simple API to JavaScript.
+//! WASM bindings for Conduit core functionality.
 
 use crate::globals::{create_path_key, get_index_manager};
 use conduit_core::{
@@ -24,7 +21,6 @@ pub(crate) fn current_unix_timestamp() -> i64 {
     (now_ms / 1000.0).floor() as i64
 }
 
-// Helper macro for consistent error conversion
 macro_rules! js_err {
     ($msg:expr) => {
         JsValue::from_str($msg)
@@ -34,7 +30,6 @@ macro_rules! js_err {
     };
 }
 
-// Helper to build JavaScript objects more ergonomically
 struct JsObjectBuilder {
     obj: js_sys::Object,
 }
@@ -76,12 +71,9 @@ pub fn ping() -> String {
 pub fn begin_file_load() -> Result<(), JsValue> {
     let manager = get_index_manager();
 
-    // Clear existing index
     manager
         .load_files(vec![])
         .map_err(|e| js_err!("Failed to clear index: {}", e))?;
-
-    // Start new staging session
     manager
         .begin_staging()
         .map_err(|e| js_err!("Failed to begin staging: {}", e))
@@ -129,13 +121,11 @@ pub fn load_file_batch(
             ));
         }
 
-        // Convert JS timestamp (ms) to Unix timestamp (seconds)
         let mtime_secs = (mtimes[i] / 1000.0) as i64;
 
         let uint8_array = Uint8Array::from(contents.get(i as u32));
         let content_vec = uint8_array.to_vec();
 
-        // Convert Vec directly to Arc<[u8]> without extra copy
         let content_arc: Arc<[u8]> = content_vec.into();
 
         let ext = FileEntry::get_extension(path_key.as_str());
@@ -162,7 +152,6 @@ pub fn commit_file_load() -> Result<usize, JsValue> {
         .map_err(|e| js_err!("Failed to access staged index: {}", e))?;
     let count = staged.len();
 
-    // Promote staged to active
     manager
         .promote_staged()
         .map_err(|e| js_err!("Failed to commit staged files: {}", e))?;
@@ -193,7 +182,6 @@ pub fn begin_index_staging() -> Result<(), JsValue> {
 pub fn commit_index_staging() -> Result<JsValue, JsValue> {
     let manager = get_index_manager();
 
-    // Get modifications before promoting
     let modifications = manager
         .get_staged_modifications()
         .map_err(|e| js_err!("Failed to get staged modifications: {}", e))?;
@@ -221,7 +209,6 @@ pub fn commit_index_staging() -> Result<JsValue, JsValue> {
         deleted_array.push(&JsValue::from_str(path.as_str()));
     }
 
-    // Promote after we've collected the data
     manager
         .promote_staged()
         .map_err(|e| js_err!("Failed to promote staged index: {}", e))?;
@@ -280,6 +267,137 @@ pub fn get_staged_deletions() -> Result<JsValue, JsValue> {
     }
 
     Ok(deleted_array.into())
+}
+
+/// Get summary of all modified files with line change statistics.
+/// Returns an array of objects with path, linesAdded, linesRemoved, and status.
+#[wasm_bindgen]
+pub fn get_modified_files_summary() -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+    use conduit_core::DiffTool;
+
+    let orchestrator = Orchestrator::new();
+    let summaries = orchestrator
+        .get_modified_files_summary()
+        .map_err(|e| js_err!("Failed to get modified files summary: {}", e))?;
+
+    let result_array = js_sys::Array::new();
+
+    for summary in summaries {
+        let obj = JsObjectBuilder::new()
+            .set("path", JsValue::from_str(summary.path.as_str()))?
+            .set("linesAdded", JsValue::from(summary.lines_added as u32))?
+            .set("linesRemoved", JsValue::from(summary.lines_removed as u32))?
+            .set(
+                "status",
+                JsValue::from_str(match summary.status {
+                    conduit_core::FileChangeStatus::Created => "created",
+                    conduit_core::FileChangeStatus::Modified => "modified",
+                    conduit_core::FileChangeStatus::Deleted => "deleted",
+                }),
+            )?
+            .build();
+
+        result_array.push(&obj);
+    }
+
+    Ok(result_array.into())
+}
+
+/// Get detailed diff for a specific file.
+/// Returns regions of changes with line numbers and content.
+#[wasm_bindgen]
+pub fn get_file_diff(path: String) -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+    use conduit_core::DiffTool;
+
+    let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
+
+    let orchestrator = Orchestrator::new();
+    let diff = orchestrator
+        .get_file_diff(&path_key)
+        .map_err(|e| js_err!("Failed to get file diff for '{}': {}", path, e))?;
+
+    let regions_array = js_sys::Array::new();
+
+    for region in diff.regions {
+        let removed_lines = js_sys::Array::new();
+        for line in &region.removed_lines {
+            removed_lines.push(&JsValue::from_str(line));
+        }
+
+        let added_lines = js_sys::Array::new();
+        for line in &region.added_lines {
+            added_lines.push(&JsValue::from_str(line));
+        }
+
+        let region_obj = JsObjectBuilder::new()
+            .set("originalStart", JsValue::from(region.original_start as u32))?
+            .set("linesRemoved", JsValue::from(region.lines_removed as u32))?
+            .set("modifiedStart", JsValue::from(region.modified_start as u32))?
+            .set("linesAdded", JsValue::from(region.lines_added as u32))?
+            .set("removedLines", removed_lines.into())?
+            .set("addedLines", added_lines.into())?
+            .build();
+
+        regions_array.push(&region_obj);
+    }
+
+    let obj = JsObjectBuilder::new()
+        .set("path", JsValue::from_str(diff.path.as_str()))?
+        .set(
+            "stats",
+            JsObjectBuilder::new()
+                .set("linesAdded", JsValue::from(diff.stats.lines_added as u32))?
+                .set(
+                    "linesRemoved",
+                    JsValue::from(diff.stats.lines_removed as u32),
+                )?
+                .set(
+                    "regionsChanged",
+                    JsValue::from(diff.stats.regions_changed as u32),
+                )?
+                .build(),
+        )?
+        .set("regions", regions_array.into())?
+        .build();
+
+    Ok(obj)
+}
+
+/// Get staged modifications with both active and staged content for diff preview.
+#[wasm_bindgen]
+pub fn get_staged_modifications_with_active() -> Result<JsValue, JsValue> {
+    let manager = get_index_manager();
+
+    let modifications = manager
+        .get_staged_modifications()
+        .map_err(|e| js_err!("Failed to get staged modifications: {}", e))?;
+
+    let modified_array = js_sys::Array::new();
+    let active_index = manager.active_index();
+
+    for (path, staged_content) in modifications {
+        let active_content = active_index
+            .get_file(&path)
+            .and_then(|entry| entry.bytes().map(|b| b.to_vec()));
+
+        let mut file_obj = JsObjectBuilder::new()
+            .set("path", JsValue::from_str(path.as_str()))?
+            .set(
+                "stagedContent",
+                Uint8Array::from(staged_content.as_slice()).into(),
+            )?;
+
+        if let Some(content) = active_content {
+            file_obj =
+                file_obj.set("activeContent", Uint8Array::from(content.as_slice()).into())?;
+        }
+
+        modified_array.push(&file_obj.build());
+    }
+
+    Ok(modified_array.into())
 }
 
 /// Get the number of files in the active index.
@@ -575,6 +693,259 @@ pub fn delete_index_file(path: String) -> Result<JsValue, JsValue> {
     let obj = JsObjectBuilder::new()
         .set("path", JsValue::from_str(response_path.as_str()))?
         .set("existed", JsValue::from_bool(existed))?
+        .build();
+
+    Ok(obj)
+}
+
+/// Replace specific lines in a file by line number.
+///
+/// # Arguments
+/// * `path` - The file path to modify
+/// * `replacements` - JavaScript array of [lineNumber, newContent] pairs (line numbers are 1-based)
+/// * `use_staged` - If true, modify staged index; otherwise modify active index
+///
+/// # Returns
+/// Object containing path, lines_replaced, and total_lines
+#[wasm_bindgen]
+pub fn replace_lines(
+    path: String,
+    replacements: js_sys::Array,
+    use_staged: bool,
+) -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+    use conduit_core::{ReplaceLinesRequest, ReplaceLinesTool, SearchSpace};
+
+    let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
+
+    // Convert JavaScript array to Vec<(usize, String)>
+    let mut line_replacements = Vec::new();
+    for i in 0..replacements.length() {
+        let pair = replacements.get(i);
+        if let Some(array) = pair.dyn_ref::<js_sys::Array>() {
+            if array.length() >= 2 {
+                let line_num = array
+                    .get(0)
+                    .as_f64()
+                    .ok_or_else(|| js_err!("Line number must be a number"))?;
+                let content = array
+                    .get(1)
+                    .as_string()
+                    .ok_or_else(|| js_err!("Line content must be a string"))?;
+
+                if line_num < 1.0 {
+                    return Err(js_err!("Line numbers must be 1-based (got {})", line_num));
+                }
+
+                line_replacements.push((line_num as usize, content));
+            }
+        } else {
+            return Err(js_err!(
+                "Each replacement must be a [lineNumber, content] array"
+            ));
+        }
+    }
+
+    let request = ReplaceLinesRequest {
+        path: path_key,
+        replacements: line_replacements,
+        where_: if use_staged {
+            SearchSpace::Staged
+        } else {
+            SearchSpace::Active
+        },
+    };
+
+    let mut orchestrator = Orchestrator::new();
+    let response = orchestrator
+        .run_replace_lines(request)
+        .map_err(|e| js_err!("Failed to replace lines in '{}': {}", path, e))?;
+
+    let obj = JsObjectBuilder::new()
+        .set("path", JsValue::from_str(response.path.as_str()))?
+        .set(
+            "linesReplaced",
+            JsValue::from(response.lines_replaced as u32),
+        )?
+        .set("linesAdded", JsValue::from(response.lines_added as i32))?
+        .set("totalLines", JsValue::from(response.total_lines as u32))?
+        .set(
+            "originalLines",
+            JsValue::from(response.original_lines as u32),
+        )?
+        .build();
+
+    Ok(obj)
+}
+
+/// Delete specific lines from a file.
+///
+/// # Arguments
+/// * `path` - The file path to modify
+/// * `line_numbers` - Array of line numbers to delete (1-based)
+/// * `use_staged` - If true, modify staged index; otherwise modify active index
+#[wasm_bindgen]
+pub fn delete_lines(
+    path: String,
+    line_numbers: Vec<usize>,
+    use_staged: bool,
+) -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+    use conduit_core::{DeleteLinesRequest, DeleteLinesTool, SearchSpace};
+
+    let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
+
+    let request = DeleteLinesRequest {
+        path: path_key,
+        line_numbers,
+        where_: if use_staged {
+            SearchSpace::Staged
+        } else {
+            SearchSpace::Active
+        },
+    };
+
+    let mut orchestrator = Orchestrator::new();
+    let response = orchestrator
+        .run_delete_lines(request)
+        .map_err(|e| js_err!("Failed to delete lines from '{}': {}", path, e))?;
+
+    let obj = JsObjectBuilder::new()
+        .set("path", JsValue::from_str(response.path.as_str()))?
+        .set(
+            "linesReplaced",
+            JsValue::from(response.lines_replaced as u32),
+        )?
+        .set("linesAdded", JsValue::from(response.lines_added as i32))?
+        .set("totalLines", JsValue::from(response.total_lines as u32))?
+        .set(
+            "originalLines",
+            JsValue::from(response.original_lines as u32),
+        )?
+        .build();
+
+    Ok(obj)
+}
+
+/// Insert new content before a specific line.
+///
+/// # Arguments
+/// * `path` - The file path to modify
+/// * `line_number` - Line number where to insert (1-based)
+/// * `content` - Content to insert (can be multi-line)
+/// * `use_staged` - If true, modify staged index; otherwise modify active index
+#[wasm_bindgen]
+pub fn insert_before_line(
+    path: String,
+    line_number: usize,
+    content: String,
+    use_staged: bool,
+) -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+    use conduit_core::{InsertLinesRequest, InsertLinesTool, InsertPosition, SearchSpace};
+
+    if line_number < 1 {
+        return Err(js_err!("Line number must be 1-based"));
+    }
+
+    let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
+
+    let request = InsertLinesRequest {
+        path: path_key,
+        line_number,
+        content,
+        position: InsertPosition::Before,
+        where_: if use_staged {
+            SearchSpace::Staged
+        } else {
+            SearchSpace::Active
+        },
+    };
+
+    let mut orchestrator = Orchestrator::new();
+    let response = orchestrator.run_insert_lines(request).map_err(|e| {
+        js_err!(
+            "Failed to insert before line {} in '{}': {}",
+            line_number,
+            path,
+            e
+        )
+    })?;
+
+    let obj = JsObjectBuilder::new()
+        .set("path", JsValue::from_str(response.path.as_str()))?
+        .set(
+            "linesReplaced",
+            JsValue::from(response.lines_replaced as u32),
+        )?
+        .set("linesAdded", JsValue::from(response.lines_added as i32))?
+        .set("totalLines", JsValue::from(response.total_lines as u32))?
+        .set(
+            "originalLines",
+            JsValue::from(response.original_lines as u32),
+        )?
+        .build();
+
+    Ok(obj)
+}
+
+/// Insert new content after a specific line.
+///
+/// # Arguments
+/// * `path` - The file path to modify  
+/// * `line_number` - Line number after which to insert (1-based)
+/// * `content` - Content to insert (can be multi-line)
+/// * `use_staged` - If true, modify staged index; otherwise modify active index
+#[wasm_bindgen]
+pub fn insert_after_line(
+    path: String,
+    line_number: usize,
+    content: String,
+    use_staged: bool,
+) -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+    use conduit_core::{InsertLinesRequest, InsertLinesTool, InsertPosition, SearchSpace};
+
+    if line_number < 1 {
+        return Err(js_err!("Line number must be 1-based"));
+    }
+
+    let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
+
+    let request = InsertLinesRequest {
+        path: path_key,
+        line_number,
+        content,
+        position: InsertPosition::After,
+        where_: if use_staged {
+            SearchSpace::Staged
+        } else {
+            SearchSpace::Active
+        },
+    };
+
+    let mut orchestrator = Orchestrator::new();
+    let response = orchestrator.run_insert_lines(request).map_err(|e| {
+        js_err!(
+            "Failed to insert after line {} in '{}': {}",
+            line_number,
+            path,
+            e
+        )
+    })?;
+
+    let obj = JsObjectBuilder::new()
+        .set("path", JsValue::from_str(response.path.as_str()))?
+        .set(
+            "linesReplaced",
+            JsValue::from(response.lines_replaced as u32),
+        )?
+        .set("linesAdded", JsValue::from(response.lines_added as i32))?
+        .set("totalLines", JsValue::from(response.total_lines as u32))?
+        .set(
+            "originalLines",
+            JsValue::from(response.original_lines as u32),
+        )?
         .build();
 
     Ok(obj)

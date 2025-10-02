@@ -14,13 +14,20 @@ export {
   createFile,
   deleteFile,
   getStagedModifications,
+  getStagedModificationsWithDiff,
   beginStaging,
   commitChanges,
   revertChanges,
   getTools,
+  replaceLines,
+  deleteLines,
+  insertLines,
   readFileSchema,
   createFileSchema,
-  deleteFileSchema
+  deleteFileSchema,
+  replaceLinesSchema,
+  deleteLinesSchema,
+  insertLinesSchema
 } from './file-service.js';
 
 // Types
@@ -29,7 +36,10 @@ export type { FileManagerConfig, FileManagerStats } from './file-manager.js';
 export type {
   ReadFileParams,
   CreateFileParams,
-  DeleteFileParams
+  DeleteFileParams,
+  ReplaceLinesParams,
+  DeleteLinesParams,
+  InsertLinesParams
 } from './file-service.js';
 
 // Utilities

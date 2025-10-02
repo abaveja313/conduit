@@ -10,18 +10,24 @@ import { FileService } from "@conduit/fs"
 import { Markdown } from "@/components/ui/markdown"
 import { streamAnthropicResponse } from "@/lib/anthropic-client"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-
-interface CodeSnippet {
-  start: number
-  lines: string[]
-}
+import { useFileChanges } from "@/hooks/useFileChanges"
+import { formatDuration, formatMemory } from "@/lib/format"
+import { DEFAULT_DIVIDER_POSITION, COMMIT_BANNER_TIMEOUT, STATUS_COLORS } from "@/lib/constants"
 
 interface FileChange {
   path: string
   status: "created" | "modified" | "deleted"
-  snippet?: CodeSnippet
-  activeSnippet?: CodeSnippet
-  stagedSnippet?: CodeSnippet
+  linesAdded: number
+  linesRemoved: number
+  // Diff regions are loaded on-demand when expanded
+  diffRegions?: Array<{
+    originalStart: number
+    linesRemoved: number
+    modifiedStart: number
+    linesAdded: number
+    removedLines: string[]
+    addedLines: string[]
+  }>
 }
 
 interface ToolCall {
@@ -41,7 +47,6 @@ interface Message {
   toolCalls?: ToolCall[]
 }
 
-// Component to render message content with inline tool calls
 function MessageContentRenderer({
   content,
   toolCalls,
@@ -55,7 +60,6 @@ function MessageContentRenderer({
   expandedToolCalls: Set<string>
   toggleToolCall: (messageId: string, toolIndex: number) => void
 }) {
-  // Split content by tool call markers
   const parts = content.split(/(\[TOOL_CALL:\d+(?::COMPLETE)?\])/g)
 
   return (
@@ -89,7 +93,7 @@ function MessageContentRenderer({
                 <div className="flex items-center gap-2">
                   {toolCall.duration !== undefined && (
                     <span className="text-xs text-muted-foreground font-mono">
-                      {toolCall.duration < 1000 ? `${toolCall.duration}ms` : `${(toolCall.duration / 1000).toFixed(2)}s`}
+                      {formatDuration(toolCall.duration)}
                     </span>
                   )}
                   {isComplete && <span className="text-xs text-green-500">✓</span>}
@@ -112,7 +116,7 @@ function MessageContentRenderer({
                   {toolCall.result !== undefined && (
                     <div className="space-y-1">
                       <div className="font-medium text-muted-foreground">Result:</div>
-                      <pre className="overflow-x-auto bg-background/50 p-2 rounded max-h-60">
+                      <pre className="overflow-x-auto bg-background/50 p-2 rounded">
                         {JSON.stringify(toolCall.result, null, 2)}
                       </pre>
                     </div>
@@ -123,7 +127,6 @@ function MessageContentRenderer({
           )
         }
 
-        // Regular text content
         if (part.trim()) {
           return <Markdown key={index} content={part} />
         }
@@ -137,16 +140,14 @@ function MessageContentRenderer({
 export default function Home() {
   const [isSetupComplete, setIsSetupComplete] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [fileChanges, setFileChanges] = useState<FileChange[]>([])
   const [isStagingCollapsed, setIsStagingCollapsed] = useState(false)
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [currentModel, setCurrentModel] = useState("")
   const [fileService, setFileService] = useState<FileService | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [dividerPosition, setDividerPosition] = useState(50) // percentage
+  const [dividerPosition, setDividerPosition] = useState(DEFAULT_DIVIDER_POSITION)
   const isDragging = useRef(false)
   const [commitBanner, setCommitBanner] = useState<{
     show: boolean
@@ -175,9 +176,13 @@ export default function Home() {
     heapLimit: 0,
     avgLatency: 0
   })
+  const [viewMode, setViewMode] = useState<Map<string, 'diff' | 'full'>>(new Map())
+  const [fullFileContent, setFullFileContent] = useState<Map<string, React.ReactElement | null>>(new Map())
   const latencies = useRef<number[]>([])
 
-  // Track latencies from completed tool calls
+  // Use the file changes hook
+  const { fileChanges, expanded, updateFileChanges, toggleExpanded, setFileChanges, clearExpanded } = useFileChanges(fileService)
+
   useEffect(() => {
     const lastMessage = messages[messages.length - 1]
     if (lastMessage?.role === 'assistant' && lastMessage.toolCalls) {
@@ -192,7 +197,6 @@ export default function Home() {
     }
   }, [messages])
 
-  // Update system stats periodically
   useEffect(() => {
     const updateStats = async () => {
       if (fileService) {
@@ -200,7 +204,6 @@ export default function Home() {
           const mods = await fileService.getStagedModifications()
           const dels = await fileService.getStagedDeletions()
 
-          // Get memory stats (Chrome/Edge only)
           interface PerformanceMemory {
             usedJSHeapSize: number
             jsHeapSizeLimit: number
@@ -209,7 +212,6 @@ export default function Home() {
           const heapUsed = memory?.usedJSHeapSize || 0
           const heapLimit = memory?.jsHeapSizeLimit || 0
 
-          // Calculate average latency from recent tool calls
           const recentLatencies = latencies.current.slice(-20)
           const avgLatency = recentLatencies.length > 0
             ? recentLatencies.reduce((a, b) => a + b, 0) / recentLatencies.length
@@ -224,7 +226,6 @@ export default function Home() {
             avgLatency
           })
         } catch {
-          // Ignore errors when no staging active
         }
       }
     }
@@ -241,7 +242,6 @@ export default function Home() {
     setIsSetupComplete(true)
     setCurrentModel(config.model)
     setFileService(config.fileService)
-    // Load initial files
     loadFiles(config.fileService, 0)
   }
 
@@ -275,33 +275,6 @@ export default function Home() {
     }
   }
 
-  const updateFileChanges = async () => {
-    if (!fileService) return
-
-    try {
-      const modifications = await fileService.getStagedModifications()
-      const deletions = await fileService.getStagedDeletions()
-
-      const modifiedChanges = modifications.map(mod => ({
-        path: mod.path,
-        status: 'modified' as const,
-        stagedSnippet: {
-          start: 1,
-          lines: mod.content?.split('\n') || []
-        }
-      }))
-
-      const deletedChanges = deletions.map((path: string) => ({
-        path,
-        status: 'deleted' as const,
-        snippet: undefined
-      }))
-
-      setFileChanges([...modifiedChanges, ...deletedChanges])
-    } catch (error) {
-      console.log('No staged modifications available:', error)
-    }
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -317,7 +290,6 @@ export default function Home() {
     setInput("")
     setIsLoading(true)
 
-    // Switch to modifications tab when running a query
     setActiveTab("modifications")
 
     try {
@@ -337,7 +309,6 @@ export default function Home() {
 
       setMessages(prev => [...prev, assistantMessage])
 
-      // Use the new streaming function
       const stream = streamAnthropicResponse(
         apiMessages,
         apiKey,
@@ -362,7 +333,6 @@ export default function Home() {
                 startTime: Date.now()
               }
               assistantMessage.toolCalls?.push(toolCallWithTiming)
-              // Add a marker in the content where this tool call occurred
               assistantMessage.content += `\n[TOOL_CALL:${toolIndex}]`
               setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }])
             }
@@ -370,7 +340,6 @@ export default function Home() {
 
           case 'tool-result':
             if (event.toolCall) {
-              // Update the tool call with its result
               const toolIndex = assistantMessage.toolCalls?.findIndex(
                 tc => tc.toolName === event.toolCall?.toolName && JSON.stringify(tc.args) === JSON.stringify(event.toolCall?.args)
               )
@@ -384,13 +353,13 @@ export default function Home() {
                   endTime,
                   duration
                 }
-                // Update the marker to show the tool has completed
                 const marker = `[TOOL_CALL:${toolIndex}]`
                 const completeMarker = `[TOOL_CALL:${toolIndex}:COMPLETE]`
                 assistantMessage.content = assistantMessage.content.replace(marker, completeMarker)
               }
               setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }])
               await updateFileChanges()
+              clearExpanded() // Close previews on tool call
             }
             break
 
@@ -402,7 +371,6 @@ export default function Home() {
             break
 
           case 'done':
-            // Stream completed
             break
         }
       }
@@ -421,21 +389,10 @@ export default function Home() {
   const handleRestart = () => {
     setMessages([])
     setFileChanges([])
-    setExpanded(new Set())
+    clearExpanded()
     setExpandedToolCalls(new Set())
   }
 
-  const toggleExpanded = (path: string) => {
-    setExpanded(prev => {
-      const next = new Set(prev)
-      if (next.has(path)) {
-        next.delete(path)
-      } else {
-        next.add(path)
-      }
-      return next
-    })
-  }
 
   const toggleToolCall = (messageId: string, toolIndex: number) => {
     const key = `${messageId}-${toolIndex}`
@@ -450,29 +407,206 @@ export default function Home() {
     })
   }
 
-  const renderCode = (snippet: CodeSnippet | undefined, tint?: "red" | "green") => {
-    if (!snippet) return null
+  const fetchFullFile = async (path: string) => {
+    if (!fileService) return null
 
-    const tintClass = tint === "red" ? "bg-red-500/10" : tint === "green" ? "bg-green-500/10" : ""
-    const lineNumberClass = tint === "red" ? "text-red-500" : tint === "green" ? "text-green-500" : "text-muted-foreground"
+    try {
+      // First, get a sample to know the total lines
+      const sample = await fileService.readFile({
+        path,
+        lineRange: { start: 1, end: 1 }
+      })
 
-    return (
-      <pre className={`${tintClass} rounded-md p-4 overflow-x-auto`}>
-        <code className="text-sm font-mono">
-          {snippet.lines.map((line, i) => (
-            <div key={i} className="flex">
-              <span className={`${lineNumberClass} mr-4 select-none`}>
-                {String(snippet.start + i).padStart(4, ' ')}
+      // Then read the entire file
+      const result = await fileService.readFile({
+        path,
+        lineRange: { start: 1, end: sample.totalLines }
+      })
+
+      // result.lines is an array of objects like [{1: "content"}, {2: "content"}]
+      // We need to extract the line number and content from each object
+      const lines = result.lines.map((lineObj: { [key: number]: string }) => {
+        const [lineNum, content] = Object.entries(lineObj)[0]
+        return { lineNum, content }
+      })
+
+      return (
+        <div className="font-mono text-sm">
+          {lines.map(({ lineNum, content }) => (
+            <div key={lineNum} className="flex hover:bg-secondary/30 transition-colors">
+              <span className="text-muted-foreground w-8 sm:w-12 text-right pr-1 sm:pr-2 select-none flex-shrink-0 text-[10px] sm:text-xs py-1 border-r border-border">
+                {lineNum}
               </span>
-              <span>{line}</span>
+              <span className="pl-2 pr-4 py-1 whitespace-pre">{content}</span>
             </div>
           ))}
-        </code>
-      </pre>
+        </div>
+      )
+    } catch (error) {
+      console.error('Error loading file:', error)
+      return <div className="text-sm text-red-500">Error loading file</div>
+    }
+  }
+
+  const handleViewModeToggle = async (path: string) => {
+    const currentMode = viewMode.get(path) || 'diff'
+    const newMode = currentMode === 'diff' ? 'full' : 'diff'
+
+    setViewMode(prev => {
+      const next = new Map(prev)
+      next.set(path, newMode)
+      return next
+    })
+
+    // Fetch full file content if switching to full view
+    if (newMode === 'full' && !fullFileContent.has(path)) {
+      const content = await fetchFullFile(path)
+      setFullFileContent(prev => {
+        const next = new Map(prev)
+        next.set(path, content)
+        return next
+      })
+    }
+  }
+
+  // Override toggleExpanded to clear view mode when collapsing
+  const handleToggleExpanded = (path: string) => {
+    const isExpanded = expanded.has(path)
+    if (isExpanded) {
+      // Clearing - reset view mode and content
+      setViewMode(prev => {
+        const next = new Map(prev)
+        next.delete(path)
+        return next
+      })
+      setFullFileContent(prev => {
+        const next = new Map(prev)
+        next.delete(path)
+        return next
+      })
+    }
+    toggleExpanded(path)
+  }
+
+  const renderDiffRegions = (change: FileChange) => {
+    if (!change.diffRegions || change.diffRegions.length === 0) {
+      return (
+        <div className="text-sm text-muted-foreground text-center py-4">
+          Loading diff...
+        </div>
+      )
+    }
+
+    // For deleted files, show all content as removed
+    if (change.status === 'deleted' && change.diffRegions.length === 1 &&
+      change.diffRegions[0].linesRemoved > 0 && change.diffRegions[0].linesAdded === 0) {
+      const region = change.diffRegions[0]
+      return (
+        <div>
+          <div className="text-xs text-red-500 mb-2 font-sans">
+            File deleted ({region.linesRemoved} lines removed)
+          </div>
+          <div className="font-mono text-sm">
+            {region.removedLines.map((line, i) => (
+              <div key={`del-${i}`} className="flex bg-red-500/10 border-l-4 border-red-500">
+                <span className="text-red-600 w-8 sm:w-12 text-right pr-1 sm:pr-2 select-none flex-shrink-0 text-[10px] sm:text-xs py-1">
+                  {region.originalStart + i}
+                </span>
+                <span className="w-8 sm:w-12 text-center select-none flex-shrink-0 text-[10px] sm:text-xs py-1"></span>
+                <span className="text-red-400 pl-2 pr-4 py-1 whitespace-pre">- {line}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    // For created files, show all content as added
+    if (change.status === 'created' && change.diffRegions.length === 1 &&
+      change.diffRegions[0].linesAdded > 0 && change.diffRegions[0].linesRemoved === 0) {
+      const region = change.diffRegions[0]
+      return (
+        <div>
+          <div className="text-xs text-green-500 mb-2 font-sans">
+            File created ({region.linesAdded} lines added)
+          </div>
+          <div className="font-mono text-sm">
+            {region.addedLines.map((line, i) => (
+              <div key={`add-${i}`} className="flex bg-green-500/10 border-l-4 border-green-500">
+                <span className="w-8 sm:w-12 text-center select-none flex-shrink-0 text-[10px] sm:text-xs py-1"></span>
+                <span className="text-green-600 w-8 sm:w-12 text-right pr-1 sm:pr-2 select-none flex-shrink-0 text-[10px] sm:text-xs py-1">
+                  {region.modifiedStart + i}
+                </span>
+                <span className="text-green-400 pl-2 pr-4 py-1 whitespace-pre">+ {line}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    // Render inline diff regions
+    const allLines: React.ReactElement[] = []
+    let lineKey = 0
+
+    change.diffRegions.forEach((region, idx) => {
+      // Add a separator between regions if not the first one
+      if (idx > 0) {
+        allLines.push(
+          <div key={`sep-${idx}`} className="h-4 relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border"></div>
+            </div>
+          </div>
+        )
+      }
+
+      // For modifications, show removed lines followed by added lines
+      if (region.linesRemoved > 0 && region.linesAdded > 0) {
+        // This is a modification - add a header
+        allLines.push(
+          <div key={`header-${idx}`} className="text-xs text-muted-foreground py-2 px-4 bg-secondary/30">
+            Modified: {region.linesRemoved} line{region.linesRemoved > 1 ? 's' : ''} → {region.linesAdded} line{region.linesAdded > 1 ? 's' : ''}
+          </div>
+        )
+      }
+
+      // Add removed lines
+      region.removedLines.forEach((line, i) => {
+        allLines.push(
+          <div key={`del-${lineKey++}`} className="flex hover:bg-red-500/20 transition-colors">
+            <span className="text-red-600 w-8 sm:w-12 text-right pr-1 sm:pr-2 select-none flex-shrink-0 text-[10px] sm:text-xs py-1 border-r border-red-500/20">
+              {region.originalStart + i}
+            </span>
+            <span className="w-8 sm:w-12 text-center select-none flex-shrink-0 text-[10px] sm:text-xs py-1 border-r border-border"></span>
+            <span className="text-red-500 pl-1 pr-2 select-none">−</span>
+            <span className="text-red-400 pr-4 py-1 flex-1 whitespace-pre">{line}</span>
+          </div>
+        )
+      })
+
+      // Add added lines
+      region.addedLines.forEach((line, i) => {
+        allLines.push(
+          <div key={`add-${lineKey++}`} className="flex hover:bg-green-500/20 transition-colors">
+            <span className="w-8 sm:w-12 text-center select-none flex-shrink-0 text-[10px] sm:text-xs py-1 border-r border-border"></span>
+            <span className="text-green-600 w-8 sm:w-12 text-right pr-1 sm:pr-2 select-none flex-shrink-0 text-[10px] sm:text-xs py-1 border-r border-green-500/20">
+              {region.modifiedStart + i}
+            </span>
+            <span className="text-green-500 pl-1 pr-2 select-none">+</span>
+            <span className="text-green-400 pr-4 py-1 flex-1 whitespace-pre">{line}</span>
+          </div>
+        )
+      })
+    })
+
+    return (
+      <div className="font-mono text-sm">
+        {allLines}
+      </div>
     )
   }
 
-  // Handle commit and revert operations
   const handleCommit = async () => {
     if (!fileService) return
 
@@ -480,7 +614,6 @@ export default function Home() {
       const result = await fileService.commitChanges()
       console.log(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`)
 
-      // Show success banner
       setCommitBanner({
         show: true,
         stats: {
@@ -490,13 +623,14 @@ export default function Home() {
         }
       })
 
-      // Clear changes
       setFileChanges([])
 
-      // Hide banner after 5 seconds
+      // Refresh the files list to show the committed changes
+      await loadFiles(fileService, 0)
+
       setTimeout(() => {
         setCommitBanner({ show: false, stats: null })
-      }, 5000)
+      }, COMMIT_BANNER_TIMEOUT)
     } catch (error) {
       console.error('Failed to commit changes:', error)
       alert('Failed to persist changes. Check console for details.')
@@ -510,6 +644,9 @@ export default function Home() {
       await fileService.revertChanges()
       setFileChanges([])
       console.log('Reverted all staged changes')
+
+      // Refresh the files list to reflect the reverted state
+      await loadFiles(fileService, 0)
     } catch (error) {
       console.error('Failed to revert changes:', error)
       alert('Failed to revert changes. Check console for details.')
@@ -632,20 +769,32 @@ export default function Home() {
                     key={message.id}
                     className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`max-w-[80%] rounded-lg p-4 ${message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary'
-                      }`}>
-                      {message.role === 'user' ? (
-                        <p className="text-sm">{message.content}</p>
-                      ) : (
-                        <MessageContentRenderer
-                          content={message.content}
-                          toolCalls={message.toolCalls || []}
-                          messageId={message.id}
-                          expandedToolCalls={expandedToolCalls}
-                          toggleToolCall={toggleToolCall}
-                        />
+                    <div className="flex flex-col max-w-[80%]">
+                      <div className={`rounded-lg p-4 ${message.role === 'user'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary'
+                        }`}>
+                        {message.role === 'user' ? (
+                          <p className="text-sm">{message.content}</p>
+                        ) : (
+                          <MessageContentRenderer
+                            content={message.content}
+                            toolCalls={message.toolCalls || []}
+                            messageId={message.id}
+                            expandedToolCalls={expandedToolCalls}
+                            toggleToolCall={toggleToolCall}
+                          />
+                        )}
+                      </div>
+                      {message.role === 'assistant' && isLoading && message.id === messages[messages.length - 1]?.id && (
+                        <div className="flex items-center gap-1 mt-2 pl-4">
+                          <span className="text-sm text-muted-foreground">Thinking</span>
+                          <span className="flex gap-1">
+                            <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
+                            <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
+                            <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -697,7 +846,7 @@ export default function Home() {
         {(messages.length > 0 || isSetupComplete) && (
           <div
             className="border-l border-border bg-secondary/50 flex overflow-hidden"
-            style={{ width: isStagingCollapsed ? "40px" : `${100 - dividerPosition}%` }}
+            style={{ width: isStagingCollapsed ? "40px" : `${100 - dividerPosition}%`, minWidth: "40px" }}
           >
             <button
               onClick={() => setIsStagingCollapsed(!isStagingCollapsed)}
@@ -707,9 +856,9 @@ export default function Home() {
             </button>
 
             {!isStagingCollapsed && (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-                  <div className="p-4 border-b border-border flex-shrink-0">
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                  <div className="p-2 sm:p-4 border-b border-border flex-shrink-0">
                     <TabsList className="grid w-full grid-cols-2">
                       <TabsTrigger value="files" className="flex items-center gap-2">
                         <Files className="h-4 w-4" />
@@ -722,8 +871,8 @@ export default function Home() {
                     </TabsList>
                   </div>
 
-                  <TabsContent value="files" className="flex-1 overflow-hidden mt-0 flex flex-col">
-                    <div className="flex-1 overflow-y-auto p-4">
+                  <TabsContent value="files" className="flex-1 flex flex-col mt-0 min-h-0 overflow-hidden">
+                    <div className="flex-1 overflow-y-auto p-4 min-h-0 overflow-x-hidden">
                       {files.length === 0 && !loadingFiles ? (
                         <p className="text-muted-foreground text-center mt-8">
                           No files loaded
@@ -769,8 +918,8 @@ export default function Home() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="modifications" className="flex-1 flex flex-col overflow-hidden mt-0">
-                    <div className="flex-1 overflow-y-auto p-4 pb-0">
+                  <TabsContent value="modifications" className="flex-1 flex flex-col mt-0 min-h-0 overflow-hidden">
+                    <div className="flex-1 overflow-y-auto p-4 min-h-0 overflow-x-hidden">
                       {commitBanner.show && commitBanner.stats && (
                         <div className="mb-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
                           <div className="flex items-center justify-between mb-2">
@@ -796,40 +945,48 @@ export default function Home() {
                           No files modified yet
                         </p>
                       ) : (
-                        <div className="space-y-2 pb-4">
+                        <div className="space-y-2">
                           {fileChanges.map((change) => (
                             <div key={change.path} className="rounded-lg border border-border overflow-hidden">
                               <button
-                                onClick={() => toggleExpanded(change.path)}
-                                className="w-full p-3 flex items-center justify-between hover:bg-secondary/50 text-left"
+                                onClick={() => handleToggleExpanded(change.path)}
+                                className="w-full p-3 flex items-center justify-between hover:bg-secondary/50 text-left min-w-0"
                               >
-                                <span className="text-sm font-mono truncate flex-1">{change.path}</span>
-                                <span className={`text-xs px-2 py-1 rounded-full ml-2 ${change.status === 'created' ? 'bg-green-500/20 text-green-500' :
-                                  change.status === 'deleted' ? 'bg-red-500/20 text-red-500' :
-                                    'bg-blue-500/20 text-blue-500'
-                                  }`}>
-                                  {change.status}
-                                </span>
+                                <span className="text-sm font-mono truncate flex-1 min-w-0">{change.path}</span>
+                                <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                                  {change.linesAdded > 0 && (
+                                    <span className="text-xs text-green-500">+{change.linesAdded}</span>
+                                  )}
+                                  {change.linesRemoved > 0 && (
+                                    <span className="text-xs text-red-500">-{change.linesRemoved}</span>
+                                  )}
+                                  <span className={`text-xs px-1 py-0.5 rounded-full ${STATUS_COLORS[change.status]}`}>
+                                    {change.status}
+                                  </span>
+                                </div>
                               </button>
 
                               {expanded.has(change.path) && (
-                                <div className="p-4 bg-background/50 space-y-4">
-                                  {change.status === 'deleted' ? (
-                                    renderCode(change.snippet, "red")
-                                  ) : change.status === 'created' ? (
-                                    renderCode(change.snippet, "green")
-                                  ) : (
-                                    <>
-                                      <div>
-                                        <h4 className="text-sm font-semibold mb-2 text-red-500">Active</h4>
-                                        {renderCode(change.activeSnippet, "red")}
-                                      </div>
-                                      <div>
-                                        <h4 className="text-sm font-semibold mb-2 text-green-500">Staged</h4>
-                                        {renderCode(change.stagedSnippet, "green")}
-                                      </div>
-                                    </>
+                                <div className="bg-background/50 border-t border-border overflow-hidden">
+                                  {change.status === 'modified' && (
+                                    <div className="flex items-center justify-between p-2 sm:p-4 pb-0 sm:pb-0">
+                                      <span className="text-xs text-muted-foreground">
+                                        {viewMode.get(change.path) === 'full' ? 'Full File' : 'Changes Only'}
+                                      </span>
+                                      <button
+                                        onClick={() => handleViewModeToggle(change.path)}
+                                        className="text-xs px-2 py-1 rounded hover:bg-secondary transition-colors"
+                                      >
+                                        {viewMode.get(change.path) === 'full' ? 'Show Diff' : 'Show Full File'}
+                                      </button>
+                                    </div>
                                   )}
+                                  <div className="p-2 sm:p-4 overflow-x-auto overflow-y-hidden">
+                                    {change.status === 'modified' && viewMode.get(change.path) === 'full'
+                                      ? (fullFileContent.get(change.path) || <div className="text-sm text-muted-foreground">Loading...</div>)
+                                      : renderDiffRegions(change)
+                                    }
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -868,10 +1025,10 @@ export default function Home() {
               <span className="text-red-500">deleted: {systemStats.stagedDeletions}</span>
             )}
             {systemStats.heapUsed > 0 && (
-              <span>heap: {(systemStats.heapUsed / 1024 / 1024).toFixed(0)}MB / {(systemStats.heapLimit / 1024 / 1024).toFixed(0)}MB</span>
+              <span>heap: {formatMemory(systemStats.heapUsed)} / {formatMemory(systemStats.heapLimit)}</span>
             )}
             {systemStats.avgLatency > 0 && (
-              <span>avg: {systemStats.avgLatency < 1000 ? `${Math.round(systemStats.avgLatency)}ms` : `${(systemStats.avgLatency / 1000).toFixed(2)}s`}</span>
+              <span>avg: {formatDuration(systemStats.avgLatency)}</span>
             )}
           </div>
           <div className="text-muted-foreground">

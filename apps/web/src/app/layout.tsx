@@ -17,6 +17,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Conduit',
   description: 'AI-powered file system assistant',
+  icons: {
+    icon: { url: '/favicon.svg', type: 'image/svg+xml' },
+  },
+  manifest: '/manifest.json',
 };
 
 export default function RootLayout({

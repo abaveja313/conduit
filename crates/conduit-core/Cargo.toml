@@ -22,3 +22,4 @@ regex = "1.11.3"
 thiserror = "2.0.17"
 serde = { version = "1", features = ["derive", "rc"] }
 grep-matcher = "0.1.7"
+similar = { version = "2.4", features = ["inline", "text"] }

@@ -37,11 +37,11 @@ type Step = "welcome" | "directory" | "provider"
 
 const MODELS = {
     anthropic: [
-        { value: "claude-4.5-sonnet-latest", label: "Claude 4.5 Sonnet" },
-        { value: "claude-4.1-opus-latest", label: "Claude 4.1 Opus" },
-        { value: "claude-4-sonnet-latest", label: "Claude 4 Sonnet" },
-        { value: "claude-3-5-sonnet-latest", label: "Claude 3.5 Sonnet" },
-        { value: "claude-3-5-haiku-latest", label: "Claude 3.5 Haiku" },
+        { value: "claude-sonnet-4-5-20250929", label: "Claude 4.5 Sonnet" },
+        { value: "claude-opus-4-1-20250805", label: "Claude 4.1 Opus" },
+        { value: "claude-sonnet-4-20250514", label: "Claude 4 Sonnet" },
+        { value: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet" },
+        { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
     ]
 }
 
@@ -49,7 +49,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
     const [step, setStep] = useState<Step>("welcome")
     const [provider] = useState<"anthropic">("anthropic")
     const [apiKey, setApiKey] = useState("")
-    const [model, setModel] = useState("claude-3-5-sonnet-latest")
+    const [model, setModel] = useState("claude-sonnet-4-20250514")
     const [directory, setDirectory] = useState<FileSystemDirectoryHandle | null>(null)
     const [mode, setMode] = useState<"read" | "readwrite">("readwrite")
 
@@ -160,6 +160,10 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
 
         setIsScanning(true)
         setScanProgress({ phase: "scanning", filesFound: 0 })
+        setError(null)
+
+        // Small delay to ensure UI updates before heavy operation
+        await new Promise(resolve => setTimeout(resolve, 100))
 
         try {
             // Begin staging before loading files into WASM
@@ -192,7 +196,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
         if (!scanProgress) return null
 
         return (
-            <div className="fixed inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50">
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50 rounded-lg">
                 <div className="bg-card border rounded-lg p-6 max-w-md w-full mx-4 space-y-4">
                     <div className="flex items-center gap-3">
                         <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -394,8 +398,6 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                             </p>
                                         </div>
 
-                                        {isScanning && renderScanProgress()}
-
                                         {scanStats && !isScanning && (
                                             <div className="mt-6 max-w-md mx-auto w-full">
                                                 <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
@@ -453,7 +455,11 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                     directory && !hasScanned ? (
                                         <Button
                                             type="button"
-                                            onClick={handleScan}
+                                            onClick={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                handleScan()
+                                            }}
                                             disabled={isScanning}
                                         >
                                             {isScanning ? (
@@ -490,6 +496,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                         </motion.div>
                     </AnimatePresence>
                 </div>
+                {isScanning && renderScanProgress()}
             </DialogContent>
         </Dialog>
     )

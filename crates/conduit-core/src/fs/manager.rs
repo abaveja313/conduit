@@ -1,16 +1,33 @@
 use arc_swap::ArcSwap;
 use im::OrdSet as IOrdSet;
-use parking_lot::Mutex; // only guards staging state
+use parking_lot::{Mutex, RwLock};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::error::{Error, Result};
 use crate::fs::PathKey;
 use crate::fs::{FileEntry, Index};
+use crate::tools::LineIndex;
 
 #[derive(Default, Clone)]
 pub struct StagingState {
     snapshot: Arc<Index>,
     modified: IOrdSet<PathKey>,
+    /// Track line changes per file for efficient diff stats
+    change_stats: im::HashMap<PathKey, FileChangeStats>,
+}
+
+/// Statistics about changes to a file
+#[derive(Default, Clone, Debug)]
+pub struct FileChangeStats {
+    /// Total lines added across all operations
+    pub lines_added: isize,
+    /// Total lines removed across all operations  
+    pub lines_removed: isize,
+    /// Original line count when staging began
+    pub original_line_count: usize,
+    /// Current line count
+    pub current_line_count: usize,
 }
 /// Manages staged index updates with copy-on-write semantics.
 ///
@@ -23,6 +40,9 @@ pub struct IndexManager {
     active: ArcSwap<Index>,
     // Only writers touch this; protects the optional staged snapshot.
     staged: Mutex<Option<StagingState>>,
+    // Cache of line indices for files, keyed by (PathKey, mtime)
+    // Using RwLock for concurrent reads
+    line_index_cache: RwLock<HashMap<(PathKey, i64), Arc<LineIndex>>>,
 }
 
 impl Default for IndexManager {
@@ -30,6 +50,7 @@ impl Default for IndexManager {
         Self {
             active: ArcSwap::from_pointee(Index::default()),
             staged: Mutex::new(None),
+            line_index_cache: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -53,6 +74,7 @@ impl IndexManager {
         *g = Some(StagingState {
             snapshot: self.active.load_full(),
             modified: IOrdSet::new(),
+            change_stats: im::HashMap::new(),
         });
         Ok(())
     }
@@ -67,6 +89,42 @@ impl IndexManager {
 
         staged.modified.insert(key.clone());
         idx.upsert_file(key, entry);
+        Ok(())
+    }
+
+    /// Update line change statistics for a file
+    pub fn update_line_stats(
+        &self,
+        key: &PathKey,
+        lines_added: isize,
+        lines_removed: isize,
+        current_line_count: usize,
+    ) -> Result<()> {
+        let mut g = self.staged.lock();
+        let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
+
+        // Get or initialize stats for this file
+        let stats = staged.change_stats.entry(key.clone()).or_insert_with(|| {
+            // Use cached LineIndex for efficient line count
+            let active_index = self.active.load_full();
+            let original_count = self
+                .get_line_index(key, &active_index)
+                .map(|idx| idx.line_count())
+                .unwrap_or(0);
+
+            FileChangeStats {
+                lines_added: 0,
+                lines_removed: 0,
+                original_line_count: original_count,
+                current_line_count: original_count,
+            }
+        });
+
+        // Update cumulative stats
+        stats.lines_added += lines_added;
+        stats.lines_removed += lines_removed;
+        stats.current_line_count = current_line_count;
+
         Ok(())
     }
 
@@ -88,6 +146,8 @@ impl IndexManager {
         let staged = g.take().ok_or(Error::StagingNotActive)?;
         // O(1) atomic swap; existing readers keep their old Arc<Index> until they drop it.
         self.active.store(staged.snapshot);
+        // Clear line index cache since files have changed
+        self.clear_line_index_cache();
         Ok(())
     }
 
@@ -185,5 +245,58 @@ impl IndexManager {
             .filter(|path| staged.snapshot.get_file(path).is_none())
             .cloned()
             .collect())
+    }
+
+    /// Get change statistics for all modified files
+    pub fn get_change_stats(&self) -> Result<Vec<(PathKey, FileChangeStats)>> {
+        let g = self.staged.lock();
+        let staged = g.as_ref().ok_or(Error::StagingNotActive)?;
+
+        Ok(staged
+            .change_stats
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect())
+    }
+
+    /// Get change statistics for a specific file
+    pub fn get_file_change_stats(&self, path: &PathKey) -> Result<Option<FileChangeStats>> {
+        let g = self.staged.lock();
+        let staged = g.as_ref().ok_or(Error::StagingNotActive)?;
+
+        Ok(staged.change_stats.get(path).cloned())
+    }
+
+    /// Get or compute LineIndex for a file
+    pub fn get_line_index(&self, path: &PathKey, index: &Index) -> Option<Arc<LineIndex>> {
+        let entry = index.get_file(path)?;
+        let bytes = entry.bytes()?;
+        let mtime = entry.mtime();
+
+        // Check cache first
+        let cache_key = (path.clone(), mtime);
+        {
+            let cache = self.line_index_cache.read();
+            if let Some(line_index) = cache.get(&cache_key) {
+                return Some(Arc::clone(line_index));
+            }
+        }
+
+        // Not in cache, compute it
+        let line_index = Arc::new(LineIndex::build(bytes));
+
+        // Store in cache
+        {
+            let mut cache = self.line_index_cache.write();
+            cache.insert(cache_key, Arc::clone(&line_index));
+        }
+
+        Some(line_index)
+    }
+
+    /// Clear line index cache (e.g., when promoting staged changes)
+    pub fn clear_line_index_cache(&self) {
+        let mut cache = self.line_index_cache.write();
+        cache.clear();
     }
 }

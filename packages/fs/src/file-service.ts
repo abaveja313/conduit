@@ -8,7 +8,6 @@ import { FileMetadata } from './types.js';
 
 const logger = createLogger('file-service');
 
-// Schema definitions using Zod for runtime validation
 export const readFileSchema = z.object({
     path: z.string().describe('File path to read from staged WASM index'),
     lineRange: z.object({
@@ -43,12 +42,42 @@ export const searchFilesSchema = z.object({
     contextLines: z.number().min(0).default(2).optional().describe('Number of context lines around matches')
 });
 
-// Type inference from schemas
+export const replaceLinesSchema = z.object({
+    path: z.string().describe('File path to modify'),
+    replacements: z.array(z.tuple([
+        z.number().int().positive().describe('Line number (1-based)'),
+        z.string().describe('New content for the line')
+    ])).describe('Array of [lineNumber, newContent] pairs'),
+    useStaged: z.boolean().default(true).describe('If true, modify staged index; otherwise modify active index')
+});
+
+export const deleteLinesSchema = z.object({
+    path: z.string().describe('File path to modify'),
+    lineNumbers: z.array(z.number().int().positive()).describe('Line numbers to delete (1-based)'),
+    useStaged: z.boolean().default(true).describe('If true, modify staged index; otherwise modify active index')
+});
+
+export const insertLinesSchema = z.object({
+    path: z.string().describe('File path to modify'),
+    lineNumber: z.number().int().positive().describe('Line number where to insert (1-based)'),
+    content: z.string().describe('Content to insert (can be multi-line)'),
+    position: z.enum(['before', 'after']).describe('Insert before or after the specified line'),
+    useStaged: z.boolean().default(true).describe('If true, modify staged index; otherwise modify active index')
+});
+
+export const readEntireFileSchema = z.object({
+    path: z.string().describe('File path to read from staged WASM index')
+});
+
 export type ReadFileParams = z.infer<typeof readFileSchema>;
 export type CreateFileParams = z.infer<typeof createFileSchema>;
 export type DeleteFileParams = z.infer<typeof deleteFileSchema>;
 export type ListFilesParams = z.infer<typeof listFilesSchema>;
 export type SearchFilesParams = z.infer<typeof searchFilesSchema>;
+export type ReplaceLinesParams = z.infer<typeof replaceLinesSchema>;
+export type DeleteLinesParams = z.infer<typeof deleteLinesSchema>;
+export type InsertLinesParams = z.infer<typeof insertLinesSchema>;
+export type ReadEntireFileParams = z.infer<typeof readEntireFileSchema>;
 
 
 /**
@@ -70,7 +99,7 @@ export class FileService {
         if (this.wasmInitialized) return;
 
         try {
-            wasm.ping(); // Test if WASM is ready
+            wasm.ping();
         } catch {
             await wasm.default();
             wasm.init();
@@ -81,7 +110,11 @@ export class FileService {
     /**
      * Read file content with line range
      */
-    async readFile(params: ReadFileParams): Promise<string> {
+    async readFile(params: ReadFileParams): Promise<{
+        path: string;
+        lines: Array<{ [key: number]: string }>;
+        totalLines: number;
+    }> {
         const validated = readFileSchema.parse(params);
 
         // Validate line range
@@ -94,19 +127,28 @@ export class FileService {
         try {
             const normalizedPath = normalizePath(validated.path);
 
-            // Always use WASM's read_file_lines function with use_staged=true
             const result = wasm.read_file_lines(
                 normalizedPath,
                 validated.lineRange.start,
                 validated.lineRange.end,
-                true // always use staged
+                true
             );
 
             if (!result.content) {
                 throw new Error(`File not found: ${normalizedPath}`);
             }
 
-            return result.content;
+            // Split content into lines and create simplified format
+            const lines = result.content.split('\n').map((content, index) => {
+                const lineNum = result.startLine + index;
+                return { [lineNum]: content };
+            });
+
+            return {
+                path: normalizedPath,
+                lines,
+                totalLines: result.totalLines
+            };
         } catch (error) {
             throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
                 operation: 'read_file',
@@ -128,7 +170,6 @@ export class FileService {
         try {
             const contentBytes = encodeText(content);
 
-            // Create file in staged WASM index only
             const result = wasm.create_index_file(normalizedPath, contentBytes, true);
 
             logger.info(`Staged file creation: ${normalizedPath} (${result.size} bytes)`);
@@ -150,7 +191,6 @@ export class FileService {
         await this.ensureWasmInitialized();
 
         try {
-            // Delete file from staged WASM index only
             const result = wasm.delete_index_file(normalizedPath);
 
             logger.info(`Staged file deletion: ${normalizedPath} (existed: ${result.existed})`);
@@ -175,19 +215,16 @@ export class FileService {
         total: number;
         hasMore: boolean;
     }> {
-        // Parse with defaults
         const validated = listFilesSchema.parse(params || {});
         const { start, limit, useStaged, glob } = validated;
 
         await this.ensureWasmInitialized();
 
         try {
-            // Calculate stop index for WASM function (exclusive)
             const stop = limit === 0 ? 0 : start + limit;
 
             const result = wasm.list_files(start, stop, useStaged, glob);
 
-            // Check if there are more files beyond what we returned
             const hasMore = result.end < result.total;
 
             return {
@@ -254,6 +291,86 @@ export class FileService {
     }
 
     /**
+     * Get staged modifications with both active and staged content for diff preview
+     */
+    async getStagedModificationsWithDiff(): Promise<Array<{
+        path: string;
+        activeContent?: string;
+        stagedContent: string;
+    }>> {
+        await this.ensureWasmInitialized();
+
+        try {
+            const modifications = wasm.get_staged_modifications_with_active() as Array<{
+                path: string;
+                activeContent?: Uint8Array;
+                stagedContent: Uint8Array;
+            }>;
+
+            return modifications.map(mod => ({
+                path: mod.path,
+                activeContent: mod.activeContent ? decodeText(mod.activeContent) : undefined,
+                stagedContent: decodeText(mod.stagedContent)
+            }));
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'get_staged_modifications_with_diff'
+            });
+        }
+    }
+
+    /**
+     * Get summary of all modified files with line change statistics
+     */
+    async getModifiedFilesSummary(): Promise<Array<{
+        path: string;
+        linesAdded: number;
+        linesRemoved: number;
+        status: 'created' | 'modified' | 'deleted';
+    }>> {
+        await this.ensureWasmInitialized();
+
+        try {
+            return wasm.get_modified_files_summary();
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'get_modified_files_summary'
+            });
+        }
+    }
+
+    /**
+     * Get detailed diff for a specific file
+     */
+    async getFileDiff(path: string): Promise<{
+        path: string;
+        stats: {
+            linesAdded: number;
+            linesRemoved: number;
+            regionsChanged: number;
+        };
+        regions: Array<{
+            originalStart: number;
+            linesRemoved: number;
+            modifiedStart: number;
+            linesAdded: number;
+            removedLines: string[];
+            addedLines: string[];
+        }>;
+    }> {
+        await this.ensureWasmInitialized();
+
+        try {
+            return wasm.get_file_diff(path);
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'get_file_diff',
+                path
+            });
+        }
+    }
+
+    /**
      * Get staged deletions from WASM
      */
     async getStagedDeletions(): Promise<string[]> {
@@ -265,6 +382,102 @@ export class FileService {
         } catch (error) {
             throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
                 operation: 'get_staged_deletions'
+            });
+        }
+    }
+
+    /**
+     * Replace specific lines in a file by line number
+     */
+    async replaceLines(params: ReplaceLinesParams): Promise<{
+        path: string;
+        linesReplaced: number;
+        linesAdded: number;
+        totalLines: number;
+        originalLines: number;
+    }> {
+        const validated = replaceLinesSchema.parse(params);
+        await this.ensureWasmInitialized();
+
+        try {
+            const result = wasm.replace_lines(
+                validated.path,
+                validated.replacements as Array<[number, string]>,
+                validated.useStaged
+            );
+            return result;
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
+                operation: 'replace_lines',
+                path: validated.path,
+                linesCount: validated.replacements.length
+            });
+        }
+    }
+
+    /**
+     * Delete specific lines from a file
+     */
+    async deleteLines(params: DeleteLinesParams): Promise<{
+        path: string;
+        linesReplaced: number;
+        linesAdded: number;
+        totalLines: number;
+        originalLines: number;
+    }> {
+        const validated = deleteLinesSchema.parse(params);
+        await this.ensureWasmInitialized();
+
+        try {
+            const result = wasm.delete_lines(
+                validated.path,
+                validated.lineNumbers,
+                validated.useStaged
+            );
+            return result;
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
+                operation: 'delete_lines',
+                path: validated.path,
+                lineCount: validated.lineNumbers.length
+            });
+        }
+    }
+
+    /**
+     * Insert lines before or after a specific line
+     */
+    async insertLines(params: InsertLinesParams): Promise<{
+        path: string;
+        linesReplaced: number;
+        linesAdded: number;
+        totalLines: number;
+        originalLines: number;
+    }> {
+        const validated = insertLinesSchema.parse(params);
+        await this.ensureWasmInitialized();
+
+        try {
+            const result = validated.position === 'before'
+                ? wasm.insert_before_line(
+                    validated.path,
+                    validated.lineNumber,
+                    validated.content,
+                    validated.useStaged
+                )
+                : wasm.insert_after_line(
+                    validated.path,
+                    validated.lineNumber,
+                    validated.content,
+                    validated.useStaged
+                );
+            return result;
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
+                operation: 'insert_lines',
+                path: validated.path,
+                lineNumber: validated.lineNumber,
+                position: validated.position
             });
         }
     }
@@ -291,20 +504,17 @@ export class FileService {
         await this.ensureWasmInitialized();
 
         try {
-            // Commit staging to active index
             const result = wasm.commit_index_staging() as {
                 fileCount: number;
                 modified: Array<{ path: string; content: Uint8Array }>;
                 deleted: string[];
             };
 
-            // Write modified files to disk
             if (result.modified.length > 0) {
                 const writtenCount = await this.fileManager.writeModifiedFiles(result.modified);
                 logger.info(`Wrote ${writtenCount} files to disk`);
             }
 
-            // Delete files that were marked for deletion
             if (result.deleted.length > 0) {
                 for (const path of result.deleted) {
                     try {
@@ -403,14 +613,14 @@ export class FileService {
     getTools() {
         return {
             readFile: {
-                description: 'Read specific lines from a file in the staged WASM index. The file must be loaded into WASM memory first. Useful for examining code sections, configuration files, or any text content within a specific line range.',
+                description: 'Read specific lines from a file in the STAGED WASM index (not from disk). Returns an object with path, array of lines (format: [{lineNum: "content"}, ...]), and totalLines. The staged index contains your working changes that haven\'t been committed yet. The file must be loaded into WASM memory first. For files under 500 lines, read the entire file at once. For larger files, read in chunks of 200-300 lines.',
                 parameters: readFileSchema,
                 execute: async (params: ReadFileParams) => {
                     return this.readFile(params);
                 }
             },
             createFile: {
-                description: 'Create a new file or overwrite an existing file with text content. The file is immediately written to disk, and parent directories are created automatically if they don\'t exist. Only supports text files (UTF-8 encoding).',
+                description: 'Create a new file or overwrite an existing file in the STAGED index only. This does NOT write to disk immediately - changes are held in memory until the user commits them. The file will appear in getStagedModifications. Parent directories are created automatically in the staged index. Only supports text files (UTF-8 encoding).',
                 parameters: createFileSchema,
                 execute: async (params: CreateFileParams) => {
                     await this.createFile(params);
@@ -418,7 +628,7 @@ export class FileService {
                 }
             },
             deleteFile: {
-                description: 'Delete a file from the file system. The file must exist and be accessible. This operation is permanent and cannot be undone. The file is removed from both disk and any internal caches.',
+                description: 'Mark a file for deletion in the STAGED index. This does NOT delete the file from disk immediately - it only stages the deletion. The file will still exist on disk until the user commits the changes. The deletion will appear in getStagedDeletions.',
                 parameters: deleteFileSchema,
                 execute: async (params: DeleteFileParams) => {
                     await this.deleteFile(params);
@@ -426,65 +636,64 @@ export class FileService {
                 }
             },
             getStagedModifications: {
-                description: 'Get all files that have been modified and staged in WASM memory but not yet written to disk. Returns an array of file paths and their text content. Useful for reviewing changes before committing them or for batch operations.',
+                description: 'Get all files that have been created or modified in the STAGED index but not yet committed to disk. Returns file paths and their new content. The staged index is your working area - changes here are not on disk yet. Does not include deletions (use getStagedDeletions for those).',
                 parameters: z.object({}),
                 execute: async () => {
                     return this.getStagedModifications();
                 }
             },
             listFiles: {
-                description: 'List files from the WASM index with pagination and glob filtering support. Returns file paths with metadata (size, mtime, extension). Use pagination to handle large directories efficiently. Can list from either the active or staged index. Supports glob patterns like "*.ts", "src/**/*.js" to filter results.',
+                description: 'List files from the WASM index with pagination. IMPORTANT: Always use limit=100 or less (default is 100). The STAGED index shows your working changes, while the ACTIVE index shows the last committed state. Returns file paths with metadata. Supports glob patterns like "*.ts", "src/**/*.js". For large directories, paginate using offset.',
                 parameters: listFilesSchema,
                 execute: async (params?: ListFilesParams) => {
                     return this.listFiles(params);
                 }
             },
-            beginStaging: {
-                description: 'Begin a manual staging session. Call this before making multiple file modifications that you want to group together. Changes will be held in memory until committed with commitChanges or reverted with revertChanges.',
-                parameters: z.object({}),
-                execute: async () => {
-                    await this.beginStaging();
-                    return { success: true };
-                }
-            },
-            revertChanges: {
-                description: 'Revert all staged changes without committing. Discards all modifications made since beginStaging was called. Useful for canceling a batch operation.',
-                parameters: z.object({}),
-                execute: async () => {
-                    await this.revertChanges();
-                    return { success: true };
-                }
-            },
-            commitChanges: {
-                description: 'Commit all staged changes to the active WASM index and write to disk. Returns modified files, deleted files, and total file count. This operation: 1) Commits staged changes to WASM, 2) Writes modified files to disk, 3) Deletes removed files from disk.',
-                parameters: z.object({}),
-                execute: async () => {
-                    const result = await this.commitChanges();
-                    logger.info(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`);
-                    return result;
-                }
-            },
             searchFiles: {
-                description: 'Search for regex patterns across all files in the WASM index. Returns preview excerpts showing matches with surrounding context lines. Supports case-insensitive search, whole word matching, and glob-based file filtering.',
+                description: 'Search for regex patterns across files in the WASM index. Searches the STAGED index by default (your working changes) or ACTIVE index (last committed state) if specified. Returns preview excerpts with context. Supports case-insensitive search, whole word matching, and glob filtering. Useful for finding code patterns or text.',
                 parameters: searchFilesSchema,
                 execute: async (params: SearchFilesParams) => {
                     return this.searchFiles(params);
+                }
+            },
+            replaceLines: {
+                description: 'Replace specific lines in a file by line number in the STAGED index. Provide [lineNumber, newContent] pairs (1-based line numbers). Supports multi-line replacements - if newContent contains newlines, it will expand into multiple lines. Returns linesReplaced, linesAdded (can be negative if shrinking), totalLines, and originalLines. Changes are held in memory only until committed.',
+                parameters: replaceLinesSchema,
+                execute: async (params: ReplaceLinesParams) => {
+                    return this.replaceLines(params);
+                }
+            },
+            deleteLines: {
+                description: 'Delete specific lines from a file in the STAGED index. Provide an array of line numbers to delete (1-based). The file will shrink by the number of deleted lines. Returns modification stats including linesAdded (negative for deletions). Changes are held in memory only until committed.',
+                parameters: deleteLinesSchema,
+                execute: async (params: DeleteLinesParams) => {
+                    return this.deleteLines(params);
+                }
+            },
+            insertLines: {
+                description: 'Insert new content before or after a specific line in the STAGED index. Content can be multi-line. Specify position as "before" or "after". The file will expand by the number of new lines. Returns modification stats. Changes are held in memory only until committed.',
+                parameters: insertLinesSchema,
+                execute: async (params: InsertLinesParams) => {
+                    return this.insertLines(params);
                 }
             }
         };
     }
 }
 
-// Export singleton instance with default config
 export const fileService = new FileService();
 
-// Export individual tool functions for easier integration
 export const readFile = (params: ReadFileParams) => fileService.readFile(params);
 export const createFile = (params: CreateFileParams) => fileService.createFile(params);
 export const deleteFile = (params: DeleteFileParams) => fileService.deleteFile(params);
 export const getStagedModifications = () => fileService.getStagedModifications();
+export const getStagedModificationsWithDiff = () => fileService.getStagedModificationsWithDiff();
+export const getStagedDeletions = () => fileService.getStagedDeletions();
 export const listFiles = (params?: ListFilesParams) => fileService.listFiles(params);
-export const beginStaging = async () => fileService.beginStaging();
+export const beginStaging = () => fileService.beginStaging();
 export const commitChanges = () => fileService.commitChanges();
-export const revertChanges = async () => fileService.revertChanges();
+export const revertChanges = () => fileService.revertChanges();
+export const replaceLines = (params: ReplaceLinesParams) => fileService.replaceLines(params);
+export const deleteLines = (params: DeleteLinesParams) => fileService.deleteLines(params);
+export const insertLines = (params: InsertLinesParams) => fileService.insertLines(params);
 export const getTools = () => fileService.getTools();
