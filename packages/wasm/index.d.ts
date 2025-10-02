@@ -114,6 +114,13 @@ export function revert_index_staging(): void;
 export function get_staged_modifications(): Array<{ path: string; content: Uint8Array }>;
 
 /**
+ * Get staged deletions without committing.
+ * @returns Array of deleted file paths
+ * @throws {Error} If no staging session is active
+ */
+export function get_staged_deletions(): string[];
+
+/**
  * Create or overwrite a file in the staged index.
  * @param path - File path to create
  * @param content - Optional file content
@@ -150,7 +157,7 @@ export function delete_index_file(path: string): {
  * @returns Object containing files array, total count, and actual pagination bounds
  * @throws {Error} If use_staged is true but no staging session is active
  */
-export function list_files(start: number, stop: number, use_staged: boolean): {
+export function list_files(start: number, stop: number, use_staged: boolean, glob_pattern?: string | null): {
   files: Array<{
     path: string;
     size: number;
@@ -161,6 +168,26 @@ export function list_files(start: number, stop: number, use_staged: boolean): {
   start: number;
   end: number;
 };
+
+/**
+ * Search for matches in files using regex patterns.
+ * Returns an array of preview hunks showing matches with surrounding context.
+ */
+export function find_in_files(
+  pattern: string,
+  use_staged: boolean,
+  case_insensitive?: boolean | null,
+  whole_word?: boolean | null,
+  include_globs?: string[] | null,
+  exclude_globs?: string[] | null,
+  context_lines?: number | null
+): Array<{
+  path: string;
+  previewStartLine: number;
+  previewEndLine: number;
+  matchedLineRanges: Array<{ start: number; end: number }>;
+  excerpt: string;
+}>;
 
 /**
  * Default export for initializing the WASM module

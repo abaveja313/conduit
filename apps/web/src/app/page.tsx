@@ -29,6 +29,9 @@ interface ToolCall {
   toolName: string
   args: Record<string, unknown>
   result?: unknown
+  startTime?: number
+  endTime?: number
+  duration?: number
 }
 
 interface Message {
@@ -84,6 +87,11 @@ function MessageContentRenderer({
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
+                  {toolCall.duration !== undefined && (
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {toolCall.duration < 1000 ? `${toolCall.duration}ms` : `${(toolCall.duration / 1000).toFixed(2)}s`}
+                    </span>
+                  )}
                   {isComplete && <span className="text-xs text-green-500">✓</span>}
                   {!isComplete && toolCall.result === undefined && (
                     <span className="text-xs text-yellow-500">⋯</span>
@@ -129,7 +137,6 @@ function MessageContentRenderer({
 export default function Home() {
   const [isSetupComplete, setIsSetupComplete] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [anthropicKey, setAnthropicKey] = useState("")
   const [fileChanges, setFileChanges] = useState<FileChange[]>([])
   const [isStagingCollapsed, setIsStagingCollapsed] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -160,15 +167,78 @@ export default function Home() {
   const [filesPage, setFilesPage] = useState(0)
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [expandedToolCalls, setExpandedToolCalls] = useState<Set<string>>(new Set())
+  const [systemStats, setSystemStats] = useState({
+    fileCount: 0,
+    stagedFiles: 0,
+    stagedDeletions: 0,
+    heapUsed: 0,
+    heapLimit: 0,
+    avgLatency: 0
+  })
+  const latencies = useRef<number[]>([])
+
+  // Track latencies from completed tool calls
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1]
+    if (lastMessage?.role === 'assistant' && lastMessage.toolCalls) {
+      lastMessage.toolCalls.forEach(tc => {
+        if (tc.duration && tc.duration > 0 && !latencies.current.includes(tc.duration)) {
+          latencies.current.push(tc.duration)
+          if (latencies.current.length > 50) {
+            latencies.current.shift()
+          }
+        }
+      })
+    }
+  }, [messages])
+
+  // Update system stats periodically
+  useEffect(() => {
+    const updateStats = async () => {
+      if (fileService) {
+        try {
+          const mods = await fileService.getStagedModifications()
+          const dels = await fileService.getStagedDeletions()
+
+          // Get memory stats (Chrome/Edge only)
+          interface PerformanceMemory {
+            usedJSHeapSize: number
+            jsHeapSizeLimit: number
+          }
+          const memory = (performance as typeof performance & { memory?: PerformanceMemory }).memory
+          const heapUsed = memory?.usedJSHeapSize || 0
+          const heapLimit = memory?.jsHeapSizeLimit || 0
+
+          // Calculate average latency from recent tool calls
+          const recentLatencies = latencies.current.slice(-20)
+          const avgLatency = recentLatencies.length > 0
+            ? recentLatencies.reduce((a, b) => a + b, 0) / recentLatencies.length
+            : 0
+
+          setSystemStats({
+            fileCount: fileService.fileCount,
+            stagedFiles: mods.length,
+            stagedDeletions: dels.length,
+            heapUsed,
+            heapLimit,
+            avgLatency
+          })
+        } catch {
+          // Ignore errors when no staging active
+        }
+      }
+    }
+    updateStats()
+    const interval = setInterval(updateStats, 1000)
+    return () => clearInterval(interval)
+  }, [fileService, fileChanges])
 
   const handleSetupComplete = (config: {
     provider: "anthropic"
-    apiKey: string
     model: string
     fileService: FileService
   }) => {
     setIsSetupComplete(true)
-    setAnthropicKey(config.apiKey)
     setCurrentModel(config.model)
     setFileService(config.fileService)
     // Load initial files
@@ -210,7 +280,9 @@ export default function Home() {
 
     try {
       const modifications = await fileService.getStagedModifications()
-      const changes = modifications.map(mod => ({
+      const deletions = await fileService.getStagedDeletions()
+
+      const modifiedChanges = modifications.map(mod => ({
         path: mod.path,
         status: 'modified' as const,
         stagedSnippet: {
@@ -218,7 +290,14 @@ export default function Home() {
           lines: mod.content?.split('\n') || []
         }
       }))
-      setFileChanges(changes)
+
+      const deletedChanges = deletions.map((path: string) => ({
+        path,
+        status: 'deleted' as const,
+        snippet: undefined
+      }))
+
+      setFileChanges([...modifiedChanges, ...deletedChanges])
     } catch (error) {
       console.log('No staged modifications available:', error)
     }
@@ -242,6 +321,8 @@ export default function Home() {
     setActiveTab("modifications")
 
     try {
+      const apiKey = localStorage.getItem('anthropicApiKey') || ''
+
       const apiMessages = messages.concat(userMessage).map(msg => ({
         role: msg.role as 'user' | 'assistant',
         content: msg.content.replace(/\[TOOL_CALL:\d+(?::COMPLETE)?\]/g, '').trim()
@@ -259,7 +340,7 @@ export default function Home() {
       // Use the new streaming function
       const stream = streamAnthropicResponse(
         apiMessages,
-        anthropicKey,
+        apiKey,
         currentModel,
         fileService
       )
@@ -276,7 +357,11 @@ export default function Home() {
           case 'tool-use':
             if (event.toolCall) {
               const toolIndex = assistantMessage.toolCalls?.length || 0
-              assistantMessage.toolCalls?.push(event.toolCall)
+              const toolCallWithTiming = {
+                ...event.toolCall,
+                startTime: Date.now()
+              }
+              assistantMessage.toolCalls?.push(toolCallWithTiming)
               // Add a marker in the content where this tool call occurred
               assistantMessage.content += `\n[TOOL_CALL:${toolIndex}]`
               setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }])
@@ -290,7 +375,15 @@ export default function Home() {
                 tc => tc.toolName === event.toolCall?.toolName && JSON.stringify(tc.args) === JSON.stringify(event.toolCall?.args)
               )
               if (toolIndex !== undefined && toolIndex >= 0 && assistantMessage.toolCalls) {
-                assistantMessage.toolCalls[toolIndex] = event.toolCall
+                const endTime = Date.now()
+                const startTime = assistantMessage.toolCalls[toolIndex].startTime
+                const duration = startTime ? endTime - startTime : undefined
+                assistantMessage.toolCalls[toolIndex] = {
+                  ...event.toolCall,
+                  startTime,
+                  endTime,
+                  duration
+                }
                 // Update the marker to show the tool has completed
                 const marker = `[TOOL_CALL:${toolIndex}]`
                 const completeMarker = `[TOOL_CALL:${toolIndex}:COMPLETE]`
@@ -459,7 +552,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+    <div className="flex h-screen bg-background text-foreground overflow-hidden pb-9">
       {/* Settings Modal */}
       <SetupModal
         open={showSettings}
@@ -467,7 +560,6 @@ export default function Home() {
           handleSetupComplete(config)
           setShowSettings(false)
         }}
-        currentApiKey={anthropicKey}
       />
 
       <div
@@ -515,7 +607,7 @@ export default function Home() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     disabled={isLoading}
-                    className="pr-24"
+                    className="pr-24 h-12 text-base"
                   />
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
                     <span className="text-xs text-muted-foreground px-2 py-1 bg-secondary rounded">
@@ -569,7 +661,7 @@ export default function Home() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     disabled={isLoading}
-                    className="pr-24"
+                    className="pr-24 h-12 text-base"
                   />
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
                     <span className="text-xs text-muted-foreground px-2 py-1 bg-secondary rounded">
@@ -678,7 +770,7 @@ export default function Home() {
                   </TabsContent>
 
                   <TabsContent value="modifications" className="flex-1 flex flex-col overflow-hidden mt-0">
-                    <div className="flex-1 overflow-y-auto p-4">
+                    <div className="flex-1 overflow-y-auto p-4 pb-0">
                       {commitBanner.show && commitBanner.stats && (
                         <div className="mb-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
                           <div className="flex items-center justify-between mb-2">
@@ -704,7 +796,7 @@ export default function Home() {
                           No files modified yet
                         </p>
                       ) : (
-                        <div className="space-y-2">
+                        <div className="space-y-2 pb-4">
                           {fileChanges.map((change) => (
                             <div key={change.path} className="rounded-lg border border-border overflow-hidden">
                               <button
@@ -764,6 +856,29 @@ export default function Home() {
         )}
       </AnimatePresence>
 
+      {/* System Stats Footer */}
+      {isSetupComplete && (
+        <div className="fixed bottom-0 left-0 right-0 bg-background/95 border-t border-border px-4 py-2 flex items-center justify-between text-xs font-mono backdrop-blur-sm">
+          <div className="flex items-center gap-4 text-muted-foreground">
+            <span>files: {systemStats.fileCount.toLocaleString()}</span>
+            {systemStats.stagedFiles > 0 && (
+              <span className="text-blue-500">staged: {systemStats.stagedFiles}</span>
+            )}
+            {systemStats.stagedDeletions > 0 && (
+              <span className="text-red-500">deleted: {systemStats.stagedDeletions}</span>
+            )}
+            {systemStats.heapUsed > 0 && (
+              <span>heap: {(systemStats.heapUsed / 1024 / 1024).toFixed(0)}MB / {(systemStats.heapLimit / 1024 / 1024).toFixed(0)}MB</span>
+            )}
+            {systemStats.avgLatency > 0 && (
+              <span>avg: {systemStats.avgLatency < 1000 ? `${Math.round(systemStats.avgLatency)}ms` : `${(systemStats.avgLatency / 1000).toFixed(2)}s`}</span>
+            )}
+          </div>
+          <div className="text-muted-foreground">
+            ♥ made by amrit in stanford, ca
+          </div>
+        </div>
+      )}
     </div>
   )
 }

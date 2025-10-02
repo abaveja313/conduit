@@ -44,6 +44,10 @@ export function revert_index_staging(): void;
  */
 export function get_staged_modifications(): any;
 /**
+ * Get staged deletions without committing.
+ */
+export function get_staged_deletions(): any;
+/**
  * Get the number of files in the active index.
  */
 export function file_count(): number;
@@ -92,7 +96,13 @@ export function create_index_file(path: string, content: Uint8Array | null | und
  * - `start`: The actual start index used
  * - `end`: The actual end index (exclusive) of returned files
  */
-export function list_files(start: number, stop: number, use_staged: boolean): any;
+export function list_files(start: number, stop: number, use_staged: boolean, glob_pattern?: string | null): any;
+/**
+ * Search for matches in files using regex patterns.
+ *
+ * Returns an array of preview hunks showing matches with surrounding context.
+ */
+export function find_in_files(pattern: string, use_staged: boolean, case_insensitive?: boolean | null, whole_word?: boolean | null, include_globs?: any[] | null, exclude_globs?: any[] | null, context_lines?: number | null): any;
 /**
  * Delete a file from the staged index, if it exists.
  */
@@ -112,12 +122,14 @@ export interface InitOutput {
   readonly commit_index_staging: () => [number, number, number];
   readonly revert_index_staging: () => [number, number];
   readonly get_staged_modifications: () => [number, number, number];
+  readonly get_staged_deletions: () => [number, number, number];
   readonly file_count: () => number;
   readonly clear_index: () => [number, number];
   readonly get_index_stats: () => [number, number, number];
   readonly read_file_lines: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
   readonly create_index_file: (a: number, b: number, c: number, d: number) => [number, number, number];
-  readonly list_files: (a: number, b: number, c: number) => [number, number, number];
+  readonly list_files: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+  readonly find_in_files: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
   readonly delete_index_file: (a: number, b: number) => [number, number, number];
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_exn_store: (a: number) => void;

@@ -31,7 +31,6 @@ interface SetupModalProps {
         mode: "read" | "readwrite"
         fileService: FileService
     }) => void
-    currentApiKey?: string
 }
 
 type Step = "welcome" | "directory" | "provider"
@@ -46,7 +45,7 @@ const MODELS = {
     ]
 }
 
-export function SetupModal({ open, onComplete, currentApiKey }: SetupModalProps) {
+export function SetupModal({ open, onComplete }: SetupModalProps) {
     const [step, setStep] = useState<Step>("welcome")
     const [provider] = useState<"anthropic">("anthropic")
     const [apiKey, setApiKey] = useState("")
@@ -107,16 +106,12 @@ export function SetupModal({ open, onComplete, currentApiKey }: SetupModalProps)
     }))
 
     useEffect(() => {
-        // Use currentApiKey prop if provided, otherwise try localStorage for backwards compatibility
-        if (currentApiKey) {
-            setApiKey(currentApiKey)
-        } else {
-            const anthropicKey = localStorage.getItem("anthropicApiKey")
-            if (anthropicKey) {
-                setApiKey(anthropicKey)
-            }
+        const anthropicKey = localStorage.getItem("anthropicApiKey")
+
+        if (anthropicKey) {
+            setApiKey(anthropicKey)
         }
-    }, [currentApiKey])
+    }, [])
 
     useEffect(() => {
         const models = MODELS[provider]
@@ -188,7 +183,8 @@ export function SetupModal({ open, onComplete, currentApiKey }: SetupModalProps)
     const handleSubmit = async () => {
         if (!apiKey || !directory || !hasScanned) return
 
-        // Pass the apiKey through onComplete callback instead of storing in localStorage
+        localStorage.setItem("anthropicApiKey", apiKey)
+        localStorage.setItem("lastProvider", "anthropic")
         onComplete({ provider, apiKey, model, directory, mode, fileService })
     }
 
@@ -271,7 +267,7 @@ export function SetupModal({ open, onComplete, currentApiKey }: SetupModalProps)
                                                 Your AI assistant can now edit files directly on your computer
                                             </h2>
                                             <p className="text-muted-foreground max-w-md mx-auto">
-                                                No uploads. No downloads. Everything runs locally in your browser using WebAssembly.
+                                                No backend. No uploads. No downloads. Everything runs locally in your browser using WebAssembly.
                                             </p>
                                         </div>
 
