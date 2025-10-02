@@ -94,6 +94,7 @@ version = "0.1.0"
 dependencies = [
  "conduit-core",
  "console_error_panic_hook",
+ "globset",
  "js-sys",
  "once_cell",
  "serde",

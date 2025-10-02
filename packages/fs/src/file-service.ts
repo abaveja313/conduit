@@ -26,10 +26,29 @@ export const deleteFileSchema = z.object({
     path: z.string().describe('File path to delete')
 });
 
+export const listFilesSchema = z.object({
+    start: z.number().min(0).default(0).describe('Starting index (0-based, inclusive)'),
+    limit: z.number().min(0).default(100).describe('Maximum number of files to return. 0 means no limit'),
+    useStaged: z.boolean().default(false).describe('If true, list from staged index; otherwise from active index'),
+    glob: z.string().optional().describe('Optional glob pattern to filter files (e.g. "*.ts", "src/**/*.js")')
+});
+
+export const searchFilesSchema = z.object({
+    pattern: z.string().describe('Regex pattern to search for'),
+    useStaged: z.boolean().default(false).describe('If true, search in staged index; otherwise in active index'),
+    caseInsensitive: z.boolean().default(false).optional().describe('Case insensitive search'),
+    wholeWord: z.boolean().default(false).optional().describe('Match whole words only'),
+    includeGlobs: z.array(z.string()).optional().describe('Glob patterns to include (e.g. ["*.ts", "src/**/*.js"])'),
+    excludeGlobs: z.array(z.string()).optional().describe('Glob patterns to exclude (e.g. ["node_modules/**", "*.test.ts"])'),
+    contextLines: z.number().min(0).default(2).optional().describe('Number of context lines around matches')
+});
+
 // Type inference from schemas
 export type ReadFileParams = z.infer<typeof readFileSchema>;
 export type CreateFileParams = z.infer<typeof createFileSchema>;
 export type DeleteFileParams = z.infer<typeof deleteFileSchema>;
+export type ListFilesParams = z.infer<typeof listFilesSchema>;
+export type SearchFilesParams = z.infer<typeof searchFilesSchema>;
 
 
 /**
@@ -139,6 +158,77 @@ export class FileService {
             throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
                 operation: 'delete_file',
                 path: validated.path
+            });
+        }
+    }
+
+    /**
+     * List files from the WASM index with pagination
+     */
+    async listFiles(params?: ListFilesParams): Promise<{
+        files: Array<{
+            path: string;
+            size: number;
+            mtime: number;
+            extension: string;
+        }>;
+        total: number;
+        hasMore: boolean;
+    }> {
+        // Parse with defaults
+        const validated = listFilesSchema.parse(params || {});
+        const { start, limit, useStaged, glob } = validated;
+
+        await this.ensureWasmInitialized();
+
+        try {
+            // Calculate stop index for WASM function (exclusive)
+            const stop = limit === 0 ? 0 : start + limit;
+
+            const result = wasm.list_files(start, stop, useStaged, glob);
+
+            // Check if there are more files beyond what we returned
+            const hasMore = result.end < result.total;
+
+            return {
+                files: result.files,
+                total: result.total,
+                hasMore
+            };
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'list_files',
+                start,
+                limit,
+                useStaged,
+                glob
+            });
+        }
+    }
+
+    /**
+     * Search for matches in files using regex patterns
+     */
+    async searchFiles(params: SearchFilesParams) {
+        const validated = searchFilesSchema.parse(params);
+        await this.ensureWasmInitialized();
+
+        try {
+            const results = wasm.find_in_files(
+                validated.pattern,
+                validated.useStaged,
+                validated.caseInsensitive,
+                validated.wholeWord,
+                validated.includeGlobs,
+                validated.excludeGlobs,
+                validated.contextLines
+            );
+            return { results };
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'search_files',
+                pattern: validated.pattern,
+                useStaged: validated.useStaged
             });
         }
     }
@@ -326,6 +416,13 @@ export class FileService {
                     return this.getStagedModifications();
                 }
             },
+            listFiles: {
+                description: 'List files from the WASM index with pagination and glob filtering support. Returns file paths with metadata (size, mtime, extension). Use pagination to handle large directories efficiently. Can list from either the active or staged index. Supports glob patterns like "*.ts", "src/**/*.js" to filter results.',
+                parameters: listFilesSchema,
+                execute: async (params?: ListFilesParams) => {
+                    return this.listFiles(params);
+                }
+            },
             beginStaging: {
                 description: 'Begin a manual staging session. Call this before making multiple file modifications that you want to group together. Changes will be held in memory until committed with commitChanges or reverted with revertChanges.',
                 parameters: z.object({}),
@@ -350,6 +447,13 @@ export class FileService {
                     logger.info(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`);
                     return result;
                 }
+            },
+            searchFiles: {
+                description: 'Search for regex patterns across all files in the WASM index. Returns preview excerpts showing matches with surrounding context lines. Supports case-insensitive search, whole word matching, and glob-based file filtering.',
+                parameters: searchFilesSchema,
+                execute: async (params: SearchFilesParams) => {
+                    return this.searchFiles(params);
+                }
             }
         };
     }
@@ -363,6 +467,7 @@ export const readFile = (params: ReadFileParams) => fileService.readFile(params)
 export const createFile = (params: CreateFileParams) => fileService.createFile(params);
 export const deleteFile = (params: DeleteFileParams) => fileService.deleteFile(params);
 export const getStagedModifications = () => fileService.getStagedModifications();
+export const listFiles = (params?: ListFilesParams) => fileService.listFiles(params);
 export const beginStaging = async () => fileService.beginStaging();
 export const commitChanges = () => fileService.commitChanges();
 export const revertChanges = async () => fileService.revertChanges();

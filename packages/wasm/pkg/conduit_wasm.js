@@ -414,6 +414,63 @@ export function create_index_file(path, content, allow_overwrite) {
 }
 
 /**
+ * List files from the index with pagination support.
+ *
+ * # Arguments
+ * * `start` - Starting index (0-based, inclusive)
+ * * `stop` - Ending index (exclusive). If 0, returns all files from start.
+ * * `use_staged` - If true, list from staged index; otherwise list from active index
+ *
+ * # Returns
+ * A JavaScript object containing:
+ * - `files`: Array of file objects with path and metadata
+ * - `total`: Total number of files in the index
+ * - `start`: The actual start index used
+ * - `end`: The actual end index (exclusive) of returned files
+ * @param {number} start
+ * @param {number} stop
+ * @param {boolean} use_staged
+ * @param {string | null} [glob_pattern]
+ * @returns {any}
+ */
+export function list_files(start, stop, use_staged, glob_pattern) {
+    var ptr0 = isLikeNone(glob_pattern) ? 0 : passStringToWasm0(glob_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.list_files(start, stop, use_staged, ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Search for matches in files using regex patterns.
+ *
+ * Returns an array of preview hunks showing matches with surrounding context.
+ * @param {string} pattern
+ * @param {boolean} use_staged
+ * @param {boolean | null} [case_insensitive]
+ * @param {boolean | null} [whole_word]
+ * @param {any[] | null} [include_globs]
+ * @param {any[] | null} [exclude_globs]
+ * @param {number | null} [context_lines]
+ * @returns {any}
+ */
+export function find_in_files(pattern, use_staged, case_insensitive, whole_word, include_globs, exclude_globs, context_lines) {
+    const ptr0 = passStringToWasm0(pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(include_globs) ? 0 : passArrayJsValueToWasm0(include_globs, wasm.__wbindgen_malloc);
+    var len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(exclude_globs) ? 0 : passArrayJsValueToWasm0(exclude_globs, wasm.__wbindgen_malloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ret = wasm.find_in_files(ptr0, len0, use_staged, isLikeNone(case_insensitive) ? 0xFFFFFF : case_insensitive ? 1 : 0, isLikeNone(whole_word) ? 0xFFFFFF : whole_word ? 1 : 0, ptr1, len1, ptr2, len2, isLikeNone(context_lines) ? 0x100000001 : (context_lines) >>> 0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Delete a file from the staged index, if it exists.
  * @param {string} path
  * @returns {any}

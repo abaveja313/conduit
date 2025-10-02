@@ -78,6 +78,28 @@ export function read_file_lines(path: string, start_line: number, end_line: numb
  */
 export function create_index_file(path: string, content: Uint8Array | null | undefined, allow_overwrite: boolean): any;
 /**
+ * List files from the index with pagination support.
+ *
+ * # Arguments
+ * * `start` - Starting index (0-based, inclusive)
+ * * `stop` - Ending index (exclusive). If 0, returns all files from start.
+ * * `use_staged` - If true, list from staged index; otherwise list from active index
+ *
+ * # Returns
+ * A JavaScript object containing:
+ * - `files`: Array of file objects with path and metadata
+ * - `total`: Total number of files in the index
+ * - `start`: The actual start index used
+ * - `end`: The actual end index (exclusive) of returned files
+ */
+export function list_files(start: number, stop: number, use_staged: boolean, glob_pattern?: string | null): any;
+/**
+ * Search for matches in files using regex patterns.
+ *
+ * Returns an array of preview hunks showing matches with surrounding context.
+ */
+export function find_in_files(pattern: string, use_staged: boolean, case_insensitive?: boolean | null, whole_word?: boolean | null, include_globs?: any[] | null, exclude_globs?: any[] | null, context_lines?: number | null): any;
+/**
  * Delete a file from the staged index, if it exists.
  */
 export function delete_index_file(path: string): any;
@@ -101,6 +123,8 @@ export interface InitOutput {
   readonly get_index_stats: () => [number, number, number];
   readonly read_file_lines: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
   readonly create_index_file: (a: number, b: number, c: number, d: number) => [number, number, number];
+  readonly list_files: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+  readonly find_in_files: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
   readonly delete_index_file: (a: number, b: number) => [number, number, number];
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_exn_store: (a: number) => void;

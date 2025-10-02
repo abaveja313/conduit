@@ -143,6 +143,46 @@ export function delete_index_file(path: string): {
 };
 
 /**
+ * List files from the index with pagination support.
+ * @param start - Starting index (0-based, inclusive)
+ * @param stop - Ending index (exclusive). If 0, returns all files from start.
+ * @param use_staged - If true, list from staged index; otherwise list from active index
+ * @returns Object containing files array, total count, and actual pagination bounds
+ * @throws {Error} If use_staged is true but no staging session is active
+ */
+export function list_files(start: number, stop: number, use_staged: boolean, glob_pattern?: string | null): {
+  files: Array<{
+    path: string;
+    size: number;
+    mtime: number;
+    extension: string;
+  }>;
+  total: number;
+  start: number;
+  end: number;
+};
+
+/**
+ * Search for matches in files using regex patterns.
+ * Returns an array of preview hunks showing matches with surrounding context.
+ */
+export function find_in_files(
+  pattern: string,
+  use_staged: boolean,
+  case_insensitive?: boolean | null,
+  whole_word?: boolean | null,
+  include_globs?: string[] | null,
+  exclude_globs?: string[] | null,
+  context_lines?: number | null
+): Array<{
+  path: string;
+  previewStartLine: number;
+  previewEndLine: number;
+  matchedLineRanges: Array<{ start: number; end: number }>;
+  excerpt: string;
+}>;
+
+/**
  * Default export for initializing the WASM module
  */
 export default function init(

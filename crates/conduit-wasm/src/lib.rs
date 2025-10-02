@@ -8,6 +8,7 @@ use conduit_core::{
     fs::FileEntry, CreateRequest, CreateResponse, CreateTool, DeleteRequest, DeleteResponse,
     DeleteTool, SearchSpace,
 };
+use globset::Glob;
 use js_sys::{Date, Uint8Array};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
@@ -381,6 +382,159 @@ pub fn create_index_file(
         .build();
 
     Ok(obj)
+}
+
+/// List files from the index with pagination support.
+///
+/// # Arguments
+/// * `start` - Starting index (0-based, inclusive)
+/// * `stop` - Ending index (exclusive). If 0, returns all files from start.
+/// * `use_staged` - If true, list from staged index; otherwise list from active index
+///
+/// # Returns
+/// A JavaScript object containing:
+/// - `files`: Array of file objects with path and metadata
+/// - `total`: Total number of files in the index
+/// - `start`: The actual start index used
+/// - `end`: The actual end index (exclusive) of returned files
+#[wasm_bindgen]
+pub fn list_files(
+    start: usize,
+    stop: usize,
+    use_staged: bool,
+    glob_pattern: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let manager = get_index_manager();
+
+    // Get the appropriate index
+    let index = if use_staged {
+        match manager.staged_index() {
+            Ok(idx) => idx,
+            Err(e) => return Err(js_err!("Failed to access staged index: {}", e)),
+        }
+    } else {
+        manager.active_index()
+    };
+
+    // Collect all files (with optional glob filtering)
+    let all_files: Vec<_> = match glob_pattern {
+        Some(pattern) => {
+            let glob = Glob::new(&pattern).map_err(|e| js_err!("Invalid glob pattern: {}", e))?;
+            let matcher = glob.compile_matcher();
+            index
+                .iter_sorted()
+                .filter(|(path, _)| matcher.is_match(path.as_str()))
+                .collect()
+        }
+        None => index.iter_sorted().collect(),
+    };
+
+    let total = all_files.len();
+    let files_array = js_sys::Array::new();
+
+    let paginated = all_files.into_iter().skip(start).take(if stop == 0 {
+        usize::MAX
+    } else {
+        stop.saturating_sub(start)
+    });
+
+    let mut count = 0;
+    for (path, entry) in paginated {
+        let file_obj = JsObjectBuilder::new()
+            .set("path", JsValue::from_str(path.as_str()))?
+            .set("size", JsValue::from_f64(entry.size() as f64))?
+            .set("mtime", JsValue::from_f64(entry.mtime() as f64))?
+            .set("extension", JsValue::from_str(entry.ext()))?
+            .build();
+        files_array.push(&file_obj);
+        count += 1;
+    }
+
+    Ok(JsObjectBuilder::new()
+        .set("files", files_array.into())?
+        .set("total", JsValue::from(total as u32))?
+        .set("start", JsValue::from(start.min(total) as u32))?
+        .set("end", JsValue::from((start.min(total) + count) as u32))?
+        .build())
+}
+
+/// Search for matches in files using regex patterns.
+///
+/// Returns an array of preview hunks showing matches with surrounding context.
+#[wasm_bindgen]
+pub fn find_in_files(
+    pattern: String,
+    use_staged: bool,
+    case_insensitive: Option<bool>,
+    whole_word: Option<bool>,
+    include_globs: Option<Vec<JsValue>>,
+    exclude_globs: Option<Vec<JsValue>>,
+    context_lines: Option<usize>,
+) -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+    use conduit_core::{AbortFlag, FindRequest, FindTool, RegexEngineOpts, SearchSpace};
+
+    let include_globs =
+        include_globs.map(|arr| arr.into_iter().filter_map(|v| v.as_string()).collect());
+    let exclude_globs =
+        exclude_globs.map(|arr| arr.into_iter().filter_map(|v| v.as_string()).collect());
+
+    let req = FindRequest {
+        find: pattern,
+        where_: if use_staged {
+            SearchSpace::Staged
+        } else {
+            SearchSpace::Active
+        },
+        include_globs,
+        exclude_globs,
+        prefix: None,
+        delta: context_lines.unwrap_or(2),
+        engine_opts: RegexEngineOpts {
+            case_insensitive: case_insensitive.unwrap_or(false),
+            word: whole_word.unwrap_or(false),
+            ..Default::default()
+        },
+    };
+
+    let mut orchestrator = Orchestrator::new();
+    let abort = AbortFlag::new();
+
+    let resp = orchestrator
+        .run_find(req, &abort)
+        .map_err(|e| js_err!("Search failed: {}", e))?;
+
+    let results_array = js_sys::Array::new();
+
+    for hunk in resp.results {
+        let matched_ranges = js_sys::Array::new();
+        for (start, end) in hunk.matched_line_ranges {
+            matched_ranges.push(
+                &JsObjectBuilder::new()
+                    .set("start", JsValue::from(start as u32))?
+                    .set("end", JsValue::from(end as u32))?
+                    .build(),
+            );
+        }
+
+        results_array.push(
+            &JsObjectBuilder::new()
+                .set("path", JsValue::from_str(hunk.path.as_str()))?
+                .set(
+                    "previewStartLine",
+                    JsValue::from(hunk.preview_start_line as u32),
+                )?
+                .set(
+                    "previewEndLine",
+                    JsValue::from(hunk.preview_end_line as u32),
+                )?
+                .set("matchedLineRanges", matched_ranges.into())?
+                .set("excerpt", JsValue::from_str(&hunk.excerpt))?
+                .build(),
+        );
+    }
+
+    Ok(results_array.into())
 }
 
 /// Delete a file from the staged index, if it exists.
