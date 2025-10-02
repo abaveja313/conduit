@@ -164,6 +164,10 @@ export class FileManager {
       includeHidden?: boolean;
     },
   ): Promise<FileManagerStats> {
+    // Clear stale metadata and handles from previous scans
+    this.metadata.clear();
+    this.handles.clear();
+
     const startTime = performance.now();
 
     // Remember root directory so we can create new files/directories later
@@ -328,10 +332,17 @@ export class FileManager {
 
           const handle = await this.ensureFileHandle(normalizedPath);
           if (!handle) {
-            logger.warn(
-              `Unable to obtain file handle for: ${path} (normalized: ${normalizedPath})`,
+            const errorMessage = `Unable to obtain file handle for: ${path} (normalized: ${normalizedPath})`;
+            logger.warn(errorMessage);
+            throw wrapError(
+              new Error(errorMessage),
+              ErrorCodes.FILE_ACCESS_ERROR,
+              {
+                operation: 'write_modified_file',
+                path,
+                normalizedPath,
+              },
             );
-            return false;
           }
 
           const writable = await handle.createWritable();
