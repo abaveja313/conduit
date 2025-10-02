@@ -383,6 +383,74 @@ pub fn create_index_file(
     Ok(obj)
 }
 
+/// List files from the index with pagination support.
+///
+/// # Arguments
+/// * `start` - Starting index (0-based, inclusive)
+/// * `stop` - Ending index (exclusive). If 0, returns all files from start.
+/// * `use_staged` - If true, list from staged index; otherwise list from active index
+///
+/// # Returns
+/// A JavaScript object containing:
+/// - `files`: Array of file objects with path and metadata
+/// - `total`: Total number of files in the index
+/// - `start`: The actual start index used
+/// - `end`: The actual end index (exclusive) of returned files
+#[wasm_bindgen]
+pub fn list_files(start: usize, stop: usize, use_staged: bool) -> Result<JsValue, JsValue> {
+    let manager = get_index_manager();
+
+    // Get the appropriate index
+    let index = if use_staged {
+        match manager.staged_index() {
+            Ok(idx) => idx,
+            Err(e) => return Err(js_err!("Failed to access staged index: {}", e)),
+        }
+    } else {
+        manager.active_index()
+    };
+
+    let total = index.len();
+
+    // Handle pagination bounds
+    let actual_start = start.min(total);
+    let actual_stop = if stop == 0 || stop > total {
+        total
+    } else {
+        stop.min(total)
+    };
+
+    // Ensure start <= stop
+    let actual_stop = actual_stop.max(actual_start);
+
+    // Collect files in the range
+    let files_array = js_sys::Array::new();
+
+    // Use sorted iterator with skip and take for efficient pagination
+    for (path, entry) in index
+        .iter_sorted()
+        .skip(actual_start)
+        .take(actual_stop - actual_start)
+    {
+        let file_obj = JsObjectBuilder::new()
+            .set("path", JsValue::from_str(path.as_str()))?
+            .set("size", JsValue::from_f64(entry.size() as f64))?
+            .set("mtime", JsValue::from_f64(entry.mtime() as f64))?
+            .set("extension", JsValue::from_str(entry.ext()))?
+            .build();
+        files_array.push(&file_obj);
+    }
+
+    let obj = JsObjectBuilder::new()
+        .set("files", files_array.into())?
+        .set("total", JsValue::from(total as u32))?
+        .set("start", JsValue::from(actual_start as u32))?
+        .set("end", JsValue::from(actual_stop as u32))?
+        .build();
+
+    Ok(obj)
+}
+
 /// Delete a file from the staged index, if it exists.
 #[wasm_bindgen]
 pub fn delete_index_file(path: String) -> Result<JsValue, JsValue> {

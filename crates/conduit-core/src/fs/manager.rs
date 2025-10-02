@@ -47,7 +47,8 @@ impl IndexManager {
         let mut g = self.staged.lock();
 
         if g.is_some() {
-            return Err(Error::StagingAlreadyActive);
+            // noting to do
+            return Ok(());
         }
         *g = Some(StagingState {
             snapshot: self.active.load_full(),

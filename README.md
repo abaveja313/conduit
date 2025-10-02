@@ -4,7 +4,7 @@
 ![Last commit](https://img.shields.io/github/last-commit/abaveja313/conduit?label=Last%20updated)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 
-Conduit is an in-browser **MCP server and client**. Agents can operate on your local file system directly in the browser with no native app and no per-file uploads. Conduit combines a **Web Worker MCP transport**, the **File System Access API**, and a **Rust → WASM** core. The MCP server runs in a dedicated worker so it does not block the UI. The client is extensible with additional tools for safe, scoped capabilities.
+Conduit is an in-browser **AI-powered file system tool**. AI agents can operate on your local file system directly in the browser with no native app and no per-file uploads. Conduit combines the **File System Access API**, **direct type-safe tools**, and a **Rust → WASM** core for high-performance file operations. The tools expose simple, type-safe functions that can be integrated with any LLM framework.
 
 ## Quick Start
 
@@ -24,6 +24,15 @@ Conduit uses the File System Access API, so it works only in browsers that imple
 | <img src="https://raw.githubusercontent.com/alrra/browser-logos/main/src/safari/safari_64x64.png" width="16" /> Safari    | 15.2+ (partial) | Desktop (partial), iOS (partial) |
 
 <sub>Last updated: <time datetime="2025-09-26">Sept 26, 2025</time></sub>
+
+## Architecture
+
+Conduit provides direct, type-safe file system tools that can be integrated with any LLM framework:
+
+- **File Tools**: Type-safe functions for reading, creating, and deleting files
+- **WASM Core**: High-performance Rust implementation for file scanning and indexing
+- **Browser Integration**: Direct access to local file system via File System Access API
+- **AI Ready**: Simple function interfaces compatible with any LLM tool-calling framework
 
 ## Usage
 
