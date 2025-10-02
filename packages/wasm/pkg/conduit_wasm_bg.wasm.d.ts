@@ -11,6 +11,7 @@ export const begin_index_staging: () => [number, number];
 export const commit_index_staging: () => [number, number, number];
 export const revert_index_staging: () => [number, number];
 export const get_staged_modifications: () => [number, number, number];
+export const get_staged_deletions: () => [number, number, number];
 export const file_count: () => number;
 export const clear_index: () => [number, number];
 export const get_index_stats: () => [number, number, number];

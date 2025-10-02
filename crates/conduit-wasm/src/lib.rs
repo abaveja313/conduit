@@ -265,6 +265,23 @@ pub fn get_staged_modifications() -> Result<JsValue, JsValue> {
     Ok(modified_array.into())
 }
 
+/// Get staged deletions without committing.
+#[wasm_bindgen]
+pub fn get_staged_deletions() -> Result<JsValue, JsValue> {
+    let manager = get_index_manager();
+
+    let deletions = manager
+        .get_staged_deletions()
+        .map_err(|e| js_err!("Failed to get staged deletions: {}", e))?;
+
+    let deleted_array = js_sys::Array::new();
+    for path in deletions {
+        deleted_array.push(&JsValue::from_str(path.as_str()));
+    }
+
+    Ok(deleted_array.into())
+}
+
 /// Get the number of files in the active index.
 #[wasm_bindgen]
 pub fn file_count() -> u32 {

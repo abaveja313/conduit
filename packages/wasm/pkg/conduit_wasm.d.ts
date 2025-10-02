@@ -44,6 +44,10 @@ export function revert_index_staging(): void;
  */
 export function get_staged_modifications(): any;
 /**
+ * Get staged deletions without committing.
+ */
+export function get_staged_deletions(): any;
+/**
  * Get the number of files in the active index.
  */
 export function file_count(): number;
@@ -118,6 +122,7 @@ export interface InitOutput {
   readonly commit_index_staging: () => [number, number, number];
   readonly revert_index_staging: () => [number, number];
   readonly get_staged_modifications: () => [number, number, number];
+  readonly get_staged_deletions: () => [number, number, number];
   readonly file_count: () => number;
   readonly clear_index: () => [number, number];
   readonly get_index_stats: () => [number, number, number];

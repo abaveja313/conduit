@@ -254,6 +254,22 @@ export class FileService {
     }
 
     /**
+     * Get staged deletions from WASM
+     */
+    async getStagedDeletions(): Promise<string[]> {
+        await this.ensureWasmInitialized();
+
+        try {
+            const deletions = wasm.get_staged_deletions() as string[];
+            return deletions;
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'get_staged_deletions'
+            });
+        }
+    }
+
+    /**
      * Begin a manual staging session
      */
     async beginStaging(): Promise<void> {

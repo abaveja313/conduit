@@ -267,7 +267,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                                 Your AI assistant can now edit files directly on your computer
                                             </h2>
                                             <p className="text-muted-foreground max-w-md mx-auto">
-                                                No uploads. No downloads. Everything runs locally in your browser using WebAssembly.
+                                                No backend. No uploads. No downloads. Everything runs locally in your browser using WebAssembly.
                                             </p>
                                         </div>
 

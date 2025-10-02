@@ -114,6 +114,13 @@ export function revert_index_staging(): void;
 export function get_staged_modifications(): Array<{ path: string; content: Uint8Array }>;
 
 /**
+ * Get staged deletions without committing.
+ * @returns Array of deleted file paths
+ * @throws {Error} If no staging session is active
+ */
+export function get_staged_deletions(): string[];
+
+/**
  * Create or overwrite a file in the staged index.
  * @param path - File path to create
  * @param content - Optional file content

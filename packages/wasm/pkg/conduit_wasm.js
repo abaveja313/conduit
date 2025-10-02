@@ -334,6 +334,18 @@ export function get_staged_modifications() {
 }
 
 /**
+ * Get staged deletions without committing.
+ * @returns {any}
+ */
+export function get_staged_deletions() {
+    const ret = wasm.get_staged_deletions();
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Get the number of files in the active index.
  * @returns {number}
  */
