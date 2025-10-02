@@ -24,6 +24,7 @@
     "@types/prismjs": "^1.26.5",
     "ai": "^5.0.59",
     "eventsource-parser": "^3.0.6",
+    "mixpanel-browser": "^2.70.0",
     "next": "15.5.3",
     "prismjs": "^1.30.0",
     "react": "19.1.0",
