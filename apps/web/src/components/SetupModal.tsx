@@ -76,6 +76,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
         duration: number
     } | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const [browserSupported, setBrowserSupported] = useState(true)
     const lastUpdateRef = useRef(0)
 
     const [fileService] = useState(() => new FileService({
@@ -113,6 +114,11 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             setApiKey(anthropicKey)
         }
 
+        // Check browser support
+        if (!window.showDirectoryPicker) {
+            setBrowserSupported(false)
+        }
+
         // Initialize WASM when modal opens
         const initWasm = async () => {
             try {
@@ -123,10 +129,10 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                 console.error('Failed to initialize WASM in SetupModal:', err)
             }
         }
-        if (open) {
+        if (open && browserSupported) {
             initWasm()
         }
-    }, [open])
+    }, [open, browserSupported])
 
     useEffect(() => {
         const models = MODELS[provider]
@@ -137,6 +143,10 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
 
 
     const handleDirectoryPicker = async () => {
+        if (!browserSupported) {
+            return
+        }
+
         try {
             setError(null)
             const handle = await window.showDirectoryPicker({ mode })
@@ -317,20 +327,40 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                             </p>
                                         </div>
 
-                                        <div className="space-y-4 max-w-sm mx-auto w-full">
-                                            <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-primary/5 border border-primary/10">
-                                                <HardDrive className="h-5 w-5 text-primary flex-shrink-0" />
-                                                <span>Direct access to files on your disk</span>
+                                        {browserSupported ? (
+                                            <div className="space-y-4 max-w-sm mx-auto w-full">
+                                                <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-primary/5 border border-primary/10">
+                                                    <HardDrive className="h-5 w-5 text-primary flex-shrink-0" />
+                                                    <span>Direct access to files on your disk</span>
+                                                </div>
+                                                <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-orange-500/5 border border-orange-500/10">
+                                                    <Cpu className="h-5 w-5 text-orange-500 flex-shrink-0" />
+                                                    <span>Rust-powered performance</span>
+                                                </div>
+                                                <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-green-500/5 border border-green-500/10">
+                                                    <Shield className="h-5 w-5 text-green-500 flex-shrink-0" />
+                                                    <span>Review every change before it&apos;s written</span>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-orange-500/5 border border-orange-500/10">
-                                                <Cpu className="h-5 w-5 text-orange-500 flex-shrink-0" />
-                                                <span>Rust-powered performance</span>
+                                        ) : (
+                                            <div className="max-w-sm mx-auto w-full">
+                                                <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive border border-destructive/20">
+                                                    <AlertCircle className="h-5 w-5 text-destructive-foreground flex-shrink-0 mt-0.5" />
+                                                    <div className="space-y-2 text-left">
+                                                        <p className="text-sm font-medium text-destructive-foreground">
+                                                            Browser Not Supported
+                                                        </p>
+                                                        <p className="text-sm text-destructive-foreground/80">
+                                                            Your browser doesn&apos;t support the File System Access API.
+                                                            Please use Chrome, Microsoft Edge, or another Chromium-based browser.
+                                                        </p>
+                                                        <p className="text-xs text-destructive-foreground/60">
+                                                            Firefox and Safari are not currently supported.
+                                                        </p>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-green-500/5 border border-green-500/10">
-                                                <Shield className="h-5 w-5 text-green-500 flex-shrink-0" />
-                                                <span>Review every change before it&apos;s written</span>
-                                            </div>
-                                        </div>
+                                        )}
                                     </div>
                                 )}
                                 {step === "provider" && (
@@ -399,7 +429,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                             <Button
                                                 variant="outline"
                                                 onClick={handleDirectoryPicker}
-                                                disabled={isScanning || hasScanned}
+                                                disabled={isScanning || hasScanned || !browserSupported}
                                                 className="w-full px-6 py-4"
                                             >
                                                 <Folder className="h-4 w-4 mr-2" />
@@ -487,7 +517,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                 )}
 
                                 {step === "welcome" && (
-                                    <Button type="button" onClick={handleNext}>
+                                    <Button type="button" onClick={handleNext} disabled={!browserSupported}>
                                         Next
                                         <ChevronRight className="h-4 w-4" />
                                     </Button>
