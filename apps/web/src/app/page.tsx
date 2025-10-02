@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { AnimatePresence } from "framer-motion"
-import { Train, RefreshCw, ChevronRight, Send, Settings, CheckCircle2, FileText, Files, File } from "lucide-react"
+import { Train, RefreshCw, ChevronRight, Send, Settings, CheckCircle2, FileText, Files, File, Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SetupModal } from "@/components/SetupModal"
@@ -699,361 +699,384 @@ export default function Home() {
     }
   }, [])
 
-  if (!isSetupComplete) {
-    return <SetupModal open={true} onComplete={handleSetupComplete} />
-  }
-
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden pb-9">
-      {/* Settings Modal */}
-      <SetupModal
-        open={showSettings}
-        onComplete={(config) => {
-          handleSetupComplete(config)
-          setShowSettings(false)
-        }}
-      />
-
-      <div
-        className="flex flex-col h-full overflow-hidden"
-        style={{ width: messages.length > 0 && !isStagingCollapsed ? `${dividerPosition}%` : '100%' }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Train className="h-6 w-6" />
-            <h1 className="text-xl font-semibold">Conduit</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSettings(true)}
-              className="gap-2"
-            >
-              <Settings className="h-4 w-4" />
-              Settings
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRestart}
-              disabled={messages.length === 0}
-              className="gap-2"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Restart
-            </Button>
-          </div>
+    <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
+      {/* Header - Always visible */}
+      <div className="flex items-center justify-between p-4 border-b border-border">
+        <div className="flex items-center gap-2">
+          <Train className="h-6 w-6" />
+          <h1 className="text-xl font-semibold">Conduit</h1>
         </div>
-
-        {/* Chat Area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {messages.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="w-full max-w-2xl px-4">
-                <div className="flex flex-col items-center gap-8 mb-8">
-                  <Train className="h-16 w-16 text-muted-foreground" />
-                </div>
-                <form onSubmit={handleSubmit}>
-                  <div className="relative">
-                    <Input
-                      type="text"
-                      placeholder="Ask me to read, create, or modify files..."
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      disabled={isLoading}
-                      className="pr-24 h-12 text-base"
-                    />
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground px-2 py-1 bg-secondary rounded">
-                        Claude
-                      </span>
-                      <Button
-                        type="submit"
-                        size="sm"
-                        disabled={isLoading || !input.trim()}
-                      >
-                        <Send className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </form>
-              </div>
-            </div>
-          ) : (
+        <div className="flex items-center gap-2">
+          {isSetupComplete && (
             <>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.map(message => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div className="flex flex-col max-w-[80%]">
-                      <div className={`rounded-lg p-4 ${message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary'
-                        }`}>
-                        {message.role === 'user' ? (
-                          <p className="text-sm">{message.content}</p>
-                        ) : (
-                          <MessageContentRenderer
-                            content={message.content}
-                            toolCalls={message.toolCalls || []}
-                            messageId={message.id}
-                            expandedToolCalls={expandedToolCalls}
-                            toggleToolCall={toggleToolCall}
-                          />
-                        )}
-                      </div>
-                      {message.role === 'assistant' && isLoading && message.id === messages[messages.length - 1]?.id && (
-                        <div className="flex items-center gap-1 mt-2 pl-4">
-                          <span className="text-sm text-muted-foreground">Thinking</span>
-                          <span className="flex gap-1">
-                            <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
-                            <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
-                            <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-
-              <form onSubmit={handleSubmit} className="p-4 border-t border-border">
-                <div className="relative">
-                  <Input
-                    type="text"
-                    placeholder="Continue the conversation..."
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    disabled={isLoading}
-                    className="pr-24 h-12 text-base"
-                  />
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground px-2 py-1 bg-secondary rounded">
-                      Claude
-                    </span>
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={isLoading || !input.trim()}
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </form>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowSettings(true)}
+                className="gap-2"
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRestart}
+                disabled={messages.length === 0}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Restart
+              </Button>
             </>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            asChild
+          >
+            <a
+              href="https://github.com/abaveja313/conduit"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="gap-2"
+            >
+              <Github className="h-4 w-4" />
+              GitHub
+            </a>
+          </Button>
         </div>
       </div>
 
-      {/* Draggable Divider */}
-      {(messages.length > 0 || isSetupComplete) && !isStagingCollapsed && (
-        <div
-          className="w-1 bg-border hover:bg-primary/20 cursor-col-resize relative group"
-          onMouseDown={handleMouseDown}
-        >
-          <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-primary/10" />
-        </div>
-      )}
+      {/* Main Content */}
+      {!isSetupComplete ? (
+        <SetupModal open={true} onComplete={handleSetupComplete} />
+      ) : (
+        <div className="flex flex-1 overflow-hidden pb-9">
+          {/* Settings Modal */}
+          <SetupModal
+            open={showSettings}
+            onComplete={(config) => {
+              handleSetupComplete(config)
+              setShowSettings(false)
+            }}
+          />
 
-      {/* Right Panel with Tabs */}
-      <AnimatePresence>
-        {(messages.length > 0 || isSetupComplete) && (
           <div
-            className="border-l border-border bg-secondary/50 flex overflow-hidden"
-            style={{ width: isStagingCollapsed ? "40px" : `${100 - dividerPosition}%`, minWidth: "40px" }}
+            className="flex flex-col h-full overflow-hidden"
+            style={{ width: messages.length > 0 && !isStagingCollapsed ? `${dividerPosition}%` : '100%' }}
           >
-            <button
-              onClick={() => setIsStagingCollapsed(!isStagingCollapsed)}
-              className="w-10 hover:bg-secondary/80 flex items-center justify-center flex-shrink-0"
-            >
-              <ChevronRight className={`h-4 w-4 transition-transform ${isStagingCollapsed ? '' : 'rotate-180'}`} />
-            </button>
 
-            {!isStagingCollapsed && (
-              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                  <div className="p-2 sm:p-4 border-b border-border flex-shrink-0">
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="files" className="flex items-center gap-2">
-                        <Files className="h-4 w-4" />
-                        Files
-                      </TabsTrigger>
-                      <TabsTrigger value="modifications" className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Modifications
-                      </TabsTrigger>
-                    </TabsList>
+            {/* Chat Area */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {messages.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="w-full max-w-2xl px-4">
+                    <div className="flex flex-col items-center gap-8 mb-8">
+                      <Train className="h-16 w-16 text-muted-foreground" />
+                    </div>
+                    <form onSubmit={handleSubmit}>
+                      <div className="relative">
+                        <Input
+                          type="text"
+                          placeholder="Ask me to read, create, or modify files..."
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          disabled={isLoading}
+                          className="pr-24 h-12 text-base"
+                        />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground px-2 py-1 bg-secondary rounded">
+                            Claude
+                          </span>
+                          <Button
+                            type="submit"
+                            size="sm"
+                            disabled={isLoading || !input.trim()}
+                          >
+                            <Send className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </form>
                   </div>
-
-                  <TabsContent value="files" className="flex-1 flex flex-col mt-0 min-h-0 overflow-hidden">
-                    <div className="flex-1 overflow-y-auto p-4 min-h-0 overflow-x-hidden">
-                      {files.length === 0 && !loadingFiles ? (
-                        <p className="text-muted-foreground text-center mt-8">
-                          No files loaded
-                        </p>
-                      ) : (
-                        <div className="space-y-1">
-                          {files.map((file) => (
-                            <div key={file.path} className="flex items-center gap-2 p-2 hover:bg-secondary/50 rounded group">
-                              <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                              <span className="text-sm font-mono truncate flex-1 min-w-0">{file.path}</span>
-                              <div className="flex items-center gap-2 flex-shrink-0">
-                                {file.extension && (
-                                  <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
-                                    {file.extension}
-                                  </span>
-                                )}
-                                <span className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)}KB</span>
-                              </div>
-                            </div>
-                          ))}
-
-                          {files.length < filesTotal && (
-                            <div className="mt-4 text-center pb-4">
-                              <Button
-                                onClick={loadMoreFiles}
-                                variant="outline"
-                                size="sm"
-                                disabled={loadingFiles}
-                              >
-                                {loadingFiles ? (
-                                  <>
-                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                    Loading...
-                                  </>
-                                ) : (
-                                  <>Load More ({files.length} of {filesTotal})</>
-                                )}
-                              </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {messages.map(message => (
+                      <div
+                        key={message.id}
+                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div className="flex flex-col max-w-[80%]">
+                          <div className={`rounded-lg p-4 ${message.role === 'user'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary'
+                            }`}>
+                            {message.role === 'user' ? (
+                              <p className="text-sm">{message.content}</p>
+                            ) : (
+                              <MessageContentRenderer
+                                content={message.content}
+                                toolCalls={message.toolCalls || []}
+                                messageId={message.id}
+                                expandedToolCalls={expandedToolCalls}
+                                toggleToolCall={toggleToolCall}
+                              />
+                            )}
+                          </div>
+                          {message.role === 'assistant' && isLoading && message.id === messages[messages.length - 1]?.id && (
+                            <div className="flex items-center gap-1 mt-2 pl-4">
+                              <span className="text-sm text-muted-foreground">Thinking</span>
+                              <span className="flex gap-1">
+                                <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
+                                <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
+                                <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
+                              </span>
                             </div>
                           )}
                         </div>
-                      )}
+                      </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  <form onSubmit={handleSubmit} className="p-4 border-t border-border">
+                    <div className="relative">
+                      <Input
+                        type="text"
+                        placeholder="Continue the conversation..."
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        disabled={isLoading}
+                        className="pr-24 h-12 text-base"
+                      />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground px-2 py-1 bg-secondary rounded">
+                          Claude
+                        </span>
+                        <Button
+                          type="submit"
+                          size="sm"
+                          disabled={isLoading || !input.trim()}
+                        >
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                  </TabsContent>
+                  </form>
+                </>
+              )}
+            </div>
+          </div>
 
-                  <TabsContent value="modifications" className="flex-1 flex flex-col mt-0 min-h-0 overflow-hidden">
-                    <div className="flex-1 overflow-y-auto p-4 min-h-0 overflow-x-hidden">
-                      {commitBanner.show && commitBanner.stats && (
-                        <div className="mb-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <CheckCircle2 className="h-5 w-5 text-green-500" />
-                              <span className="font-medium text-green-500">Changes Persisted Successfully</span>
-                            </div>
-                            <button
-                              onClick={() => setCommitBanner({ show: false, stats: null })}
-                              className="text-green-500 hover:text-green-600"
-                            >
-                              ×
-                            </button>
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {commitBanner.stats.modified} files modified
-                            {commitBanner.stats.deleted > 0 && `, ${commitBanner.stats.deleted} files deleted`}
-                          </div>
-                        </div>
-                      )}
-                      {fileChanges.length === 0 ? (
-                        <p className="text-muted-foreground text-center mt-8">
-                          No files modified yet
-                        </p>
-                      ) : (
-                        <div className="space-y-2">
-                          {fileChanges.map((change) => (
-                            <div key={change.path} className="rounded-lg border border-border overflow-hidden">
-                              <button
-                                onClick={() => handleToggleExpanded(change.path)}
-                                className="w-full p-3 flex items-center justify-between hover:bg-secondary/50 text-left min-w-0"
-                              >
-                                <span className="text-sm font-mono truncate flex-1 min-w-0">{change.path}</span>
-                                <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                                  {change.linesAdded > 0 && (
-                                    <span className="text-xs text-green-500">+{change.linesAdded}</span>
-                                  )}
-                                  {change.linesRemoved > 0 && (
-                                    <span className="text-xs text-red-500">-{change.linesRemoved}</span>
-                                  )}
-                                  <span className={`text-xs px-1 py-0.5 rounded-full ${STATUS_COLORS[change.status]}`}>
-                                    {change.status}
-                                  </span>
-                                </div>
-                              </button>
+          {/* Draggable Divider */}
+          {(messages.length > 0 || isSetupComplete) && !isStagingCollapsed && (
+            <div
+              className="w-1 bg-border hover:bg-primary/20 cursor-col-resize relative group"
+              onMouseDown={handleMouseDown}
+            >
+              <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-primary/10" />
+            </div>
+          )}
 
-                              {expanded.has(change.path) && (
-                                <div className="bg-background/50 border-t border-border overflow-hidden">
-                                  {change.status === 'modified' && (
-                                    <div className="flex items-center justify-between p-2 sm:p-4 pb-0 sm:pb-0">
-                                      <span className="text-xs text-muted-foreground">
-                                        {viewMode.get(change.path) === 'full' ? 'Full File' : 'Changes Only'}
+          {/* Right Panel with Tabs */}
+          <AnimatePresence>
+            {(messages.length > 0 || isSetupComplete) && (
+              <div
+                className="border-l border-border bg-secondary/50 flex overflow-hidden"
+                style={{ width: isStagingCollapsed ? "40px" : `${100 - dividerPosition}%`, minWidth: "40px" }}
+              >
+                <button
+                  onClick={() => setIsStagingCollapsed(!isStagingCollapsed)}
+                  className="w-10 hover:bg-secondary/80 flex items-center justify-center flex-shrink-0"
+                >
+                  <ChevronRight className={`h-4 w-4 transition-transform ${isStagingCollapsed ? '' : 'rotate-180'}`} />
+                </button>
+
+                {!isStagingCollapsed && (
+                  <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                      <div className="p-2 sm:p-4 border-b border-border flex-shrink-0">
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="files" className="flex items-center gap-2">
+                            <Files className="h-4 w-4" />
+                            Files
+                          </TabsTrigger>
+                          <TabsTrigger value="modifications" className="flex items-center gap-2">
+                            <FileText className="h-4 w-4" />
+                            Modifications
+                          </TabsTrigger>
+                        </TabsList>
+                      </div>
+
+                      <TabsContent value="files" className="flex-1 flex flex-col mt-0 min-h-0 overflow-hidden">
+                        <div className="flex-1 overflow-y-auto p-4 min-h-0 overflow-x-hidden">
+                          {files.length === 0 && !loadingFiles ? (
+                            <p className="text-muted-foreground text-center mt-8">
+                              No files loaded
+                            </p>
+                          ) : (
+                            <div className="space-y-1">
+                              {files.map((file) => (
+                                <div key={file.path} className="flex items-center gap-2 p-2 hover:bg-secondary/50 rounded group">
+                                  <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                  <span className="text-sm font-mono truncate flex-1 min-w-0">{file.path}</span>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    {file.extension && (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                                        {file.extension}
                                       </span>
-                                      <button
-                                        onClick={() => handleViewModeToggle(change.path)}
-                                        className="text-xs px-2 py-1 rounded hover:bg-secondary transition-colors"
-                                      >
-                                        {viewMode.get(change.path) === 'full' ? 'Show Diff' : 'Show Full File'}
-                                      </button>
-                                    </div>
-                                  )}
-                                  <div className="p-2 sm:p-4 overflow-x-auto overflow-y-hidden">
-                                    {change.status === 'modified' && viewMode.get(change.path) === 'full'
-                                      ? (fullFileContent.get(change.path) || <div className="text-sm text-muted-foreground">Loading...</div>)
-                                      : renderDiffRegions(change)
-                                    }
+                                    )}
+                                    <span className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)}KB</span>
                                   </div>
+                                </div>
+                              ))}
+
+                              {files.length < filesTotal && (
+                                <div className="mt-4 text-center pb-4">
+                                  <Button
+                                    onClick={loadMoreFiles}
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={loadingFiles}
+                                  >
+                                    {loadingFiles ? (
+                                      <>
+                                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                        Loading...
+                                      </>
+                                    ) : (
+                                      <>Load More ({files.length} of {filesTotal})</>
+                                    )}
+                                  </Button>
                                 </div>
                               )}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </TabsContent>
 
-                    {fileChanges.length > 0 && (
-                      <div className="p-4 border-t border-border flex gap-2 flex-shrink-0">
-                        <Button onClick={handleCommit} className="flex-1" disabled={isLoading}>
-                          Persist to Disk
-                        </Button>
-                        <Button onClick={handleRevert} variant="outline" className="flex-1" disabled={isLoading}>
-                          Revert All
-                        </Button>
-                      </div>
-                    )}
-                  </TabsContent>
-                </Tabs>
+                      <TabsContent value="modifications" className="flex-1 flex flex-col mt-0 min-h-0 overflow-hidden">
+                        <div className="flex-1 overflow-y-auto p-4 min-h-0 overflow-x-hidden">
+                          {commitBanner.show && commitBanner.stats && (
+                            <div className="mb-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                  <span className="font-medium text-green-500">Changes Persisted Successfully</span>
+                                </div>
+                                <button
+                                  onClick={() => setCommitBanner({ show: false, stats: null })}
+                                  className="text-green-500 hover:text-green-600"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {commitBanner.stats.modified} files modified
+                                {commitBanner.stats.deleted > 0 && `, ${commitBanner.stats.deleted} files deleted`}
+                              </div>
+                            </div>
+                          )}
+                          {fileChanges.length === 0 ? (
+                            <p className="text-muted-foreground text-center mt-8">
+                              No files modified yet
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              {fileChanges.map((change) => (
+                                <div key={change.path} className="rounded-lg border border-border overflow-hidden">
+                                  <button
+                                    onClick={() => handleToggleExpanded(change.path)}
+                                    className="w-full p-3 flex items-center justify-between hover:bg-secondary/50 text-left min-w-0"
+                                  >
+                                    <span className="text-sm font-mono truncate flex-1 min-w-0">{change.path}</span>
+                                    <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                                      {change.linesAdded > 0 && (
+                                        <span className="text-xs text-green-500">+{change.linesAdded}</span>
+                                      )}
+                                      {change.linesRemoved > 0 && (
+                                        <span className="text-xs text-red-500">-{change.linesRemoved}</span>
+                                      )}
+                                      <span className={`text-xs px-1 py-0.5 rounded-full ${STATUS_COLORS[change.status]}`}>
+                                        {change.status}
+                                      </span>
+                                    </div>
+                                  </button>
+
+                                  {expanded.has(change.path) && (
+                                    <div className="bg-background/50 border-t border-border overflow-hidden">
+                                      {change.status === 'modified' && (
+                                        <div className="flex items-center justify-between p-2 sm:p-4 pb-0 sm:pb-0">
+                                          <span className="text-xs text-muted-foreground">
+                                            {viewMode.get(change.path) === 'full' ? 'Full File' : 'Changes Only'}
+                                          </span>
+                                          <button
+                                            onClick={() => handleViewModeToggle(change.path)}
+                                            className="text-xs px-2 py-1 rounded hover:bg-secondary transition-colors"
+                                          >
+                                            {viewMode.get(change.path) === 'full' ? 'Show Diff' : 'Show Full File'}
+                                          </button>
+                                        </div>
+                                      )}
+                                      <div className="p-2 sm:p-4 overflow-x-auto overflow-y-hidden">
+                                        {change.status === 'modified' && viewMode.get(change.path) === 'full'
+                                          ? (fullFileContent.get(change.path) || <div className="text-sm text-muted-foreground">Loading...</div>)
+                                          : renderDiffRegions(change)
+                                        }
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {fileChanges.length > 0 && (
+                          <div className="p-4 border-t border-border flex gap-2 flex-shrink-0">
+                            <Button onClick={handleCommit} className="flex-1" disabled={isLoading}>
+                              Persist to Disk
+                            </Button>
+                            <Button onClick={handleRevert} variant="outline" className="flex-1" disabled={isLoading}>
+                              Revert All
+                            </Button>
+                          </div>
+                        )}
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-      </AnimatePresence>
+          </AnimatePresence>
 
-      {/* System Stats Footer */}
-      {isSetupComplete && (
-        <div className="fixed bottom-0 left-0 right-0 bg-background/95 border-t border-border px-4 py-2 flex items-center justify-between text-xs font-mono backdrop-blur-sm">
-          <div className="flex items-center gap-4 text-muted-foreground">
-            <span>files: {systemStats.fileCount.toLocaleString()}</span>
-            {systemStats.stagedFiles > 0 && (
-              <span className="text-blue-500">staged: {systemStats.stagedFiles}</span>
-            )}
-            {systemStats.stagedDeletions > 0 && (
-              <span className="text-red-500">deleted: {systemStats.stagedDeletions}</span>
-            )}
-            {systemStats.heapUsed > 0 && (
-              <span>heap: {formatMemory(systemStats.heapUsed)} / {formatMemory(systemStats.heapLimit)}</span>
-            )}
-            {systemStats.avgLatency > 0 && (
-              <span>avg: {formatDuration(systemStats.avgLatency)}</span>
-            )}
-          </div>
-          <div className="text-muted-foreground">
-            ♥ made by amrit in stanford, ca
-          </div>
+          {/* System Stats Footer */}
+          {isSetupComplete && (
+            <div className="fixed bottom-0 left-0 right-0 bg-background/95 border-t border-border px-4 py-2 flex items-center justify-between text-xs font-mono backdrop-blur-sm">
+              <div className="flex items-center gap-4 text-muted-foreground">
+                <span>files: {systemStats.fileCount.toLocaleString()}</span>
+                {systemStats.stagedFiles > 0 && (
+                  <span className="text-blue-500">staged: {systemStats.stagedFiles}</span>
+                )}
+                {systemStats.stagedDeletions > 0 && (
+                  <span className="text-red-500">deleted: {systemStats.stagedDeletions}</span>
+                )}
+                {systemStats.heapUsed > 0 && (
+                  <span>heap: {formatMemory(systemStats.heapUsed)} / {formatMemory(systemStats.heapLimit)}</span>
+                )}
+                {systemStats.avgLatency > 0 && (
+                  <span>avg: {formatDuration(systemStats.avgLatency)}</span>
+                )}
+              </div>
+              <div className="text-muted-foreground">
+                ♥ made by amrit in stanford, ca
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
