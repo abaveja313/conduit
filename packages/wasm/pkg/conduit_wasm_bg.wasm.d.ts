@@ -16,6 +16,7 @@ export const clear_index: () => [number, number];
 export const get_index_stats: () => [number, number, number];
 export const read_file_lines: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
 export const create_index_file: (a: number, b: number, c: number, d: number) => [number, number, number];
+export const list_files: (a: number, b: number, c: number) => [number, number, number];
 export const delete_index_file: (a: number, b: number) => [number, number, number];
 export const __wbindgen_free: (a: number, b: number, c: number) => void;
 export const __wbindgen_exn_store: (a: number) => void;
