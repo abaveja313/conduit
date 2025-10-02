@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Train, Loader2, Info, Folder, AlertCircle, ChevronRight, ChevronLeft, HardDrive, Cpu, Shield } from "lucide-react"
+import { Train, Loader2, Info, Folder, AlertCircle, ChevronRight, ChevronLeft, HardDrive, Cpu, Shield, Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -282,10 +282,21 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                             className="absolute inset-0 flex flex-col"
                         >
                             <DialogHeader className="p-6 pb-0">
-                                <DialogTitle className="flex items-center gap-2">
-                                    <Train className="h-5 w-5" />
-                                    {step === "welcome" ? "Welcome to Conduit" : "Setup Conduit"}
-                                </DialogTitle>
+                                <div className="flex items-center justify-between">
+                                    <DialogTitle className="flex items-center gap-2">
+                                        <Train className="h-5 w-5" />
+                                        {step === "welcome" ? "Welcome to Conduit" : "Setup Conduit"}
+                                    </DialogTitle>
+                                    <a
+                                        href="https://github.com/abaveja313/conduit"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                    >
+                                        <Github className="h-3 w-3" />
+                                        GitHub
+                                    </a>
+                                </div>
                                 {step !== "welcome" && (
                                     <DialogDescription>
                                         {step === "directory" && "Select a directory to work with"}
