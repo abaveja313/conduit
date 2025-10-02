@@ -1,0 +1,496 @@
+"use client"
+
+import { useState, useEffect, useRef } from "react"
+import { motion, AnimatePresence } from "framer-motion"
+import { Train, Loader2, Info, Folder, AlertCircle, ChevronRight, ChevronLeft, HardDrive, Cpu, Shield } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { FileService } from "@conduit/fs"
+import { formatFileSize } from "@conduit/fs"
+
+interface SetupModalProps {
+    open: boolean
+    onComplete: (config: {
+        provider: "anthropic"
+        apiKey: string
+        model: string
+        directory: FileSystemDirectoryHandle
+        mode: "read" | "readwrite"
+        fileService: FileService
+    }) => void
+}
+
+type Step = "welcome" | "directory" | "provider"
+
+const MODELS = {
+    anthropic: [
+        { value: "claude-4.5-sonnet-latest", label: "Claude 4.5 Sonnet" },
+        { value: "claude-4.1-opus-latest", label: "Claude 4.1 Opus" },
+        { value: "claude-4-sonnet-latest", label: "Claude 4 Sonnet" },
+        { value: "claude-3-5-sonnet-latest", label: "Claude 3.5 Sonnet" },
+        { value: "claude-3-5-haiku-latest", label: "Claude 3.5 Haiku" },
+    ]
+}
+
+export function SetupModal({ open, onComplete }: SetupModalProps) {
+    const [step, setStep] = useState<Step>("welcome")
+    const [provider] = useState<"anthropic">("anthropic")
+    const [apiKey, setApiKey] = useState("")
+    const [model, setModel] = useState("claude-3-5-sonnet-latest")
+    const [directory, setDirectory] = useState<FileSystemDirectoryHandle | null>(null)
+    const [mode, setMode] = useState<"read" | "readwrite">("readwrite")
+
+    const navigateToStep = (newStep: Step) => {
+        if (newStep !== step) {
+            setStep(newStep)
+        }
+    }
+    const [isScanning, setIsScanning] = useState(false)
+    const [hasScanned, setHasScanned] = useState(false)
+    const [scanProgress, setScanProgress] = useState<{
+        phase: "scanning" | "loading"
+        filesFound: number
+        currentPath?: string
+        loaded?: number
+        total?: number
+    } | null>(null)
+    const [scanStats, setScanStats] = useState<{
+        filesScanned: number
+        filesLoaded: number
+        binaryFilesSkipped: number
+        totalSize: number
+        duration: number
+    } | null>(null)
+    const [error, setError] = useState<string | null>(null)
+    const lastUpdateRef = useRef(0)
+
+    const [fileService] = useState(() => new FileService({
+        onScanProgress: (filesFound: number, currentPath?: string) => {
+            // Throttle updates to prevent UI slowdown
+            const now = Date.now()
+            if (now - lastUpdateRef.current > 100) {
+                lastUpdateRef.current = now
+                setScanProgress({
+                    phase: "scanning",
+                    filesFound,
+                    currentPath
+                })
+            }
+        },
+        onProgress: (loaded: number, total: number) => {
+            // Throttle updates to prevent UI slowdown
+            const now = Date.now()
+            if (now - lastUpdateRef.current > 100) {
+                lastUpdateRef.current = now
+                setScanProgress({
+                    phase: "loading",
+                    filesFound: total,
+                    loaded,
+                    total
+                })
+            }
+        }
+    }))
+
+    useEffect(() => {
+        const anthropicKey = localStorage.getItem("anthropicApiKey")
+
+        if (anthropicKey) {
+            setApiKey(anthropicKey)
+        }
+    }, [])
+
+    useEffect(() => {
+        const models = MODELS[provider]
+        if (!models.find(m => m.value === model)) {
+            setModel(models[0].value)
+        }
+    }, [provider, model])
+
+
+    const handleDirectoryPicker = async () => {
+        try {
+            setError(null)
+            const handle = await window.showDirectoryPicker({ mode })
+            setDirectory(handle)
+        } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') {
+                return
+            }
+            setError("Failed to access directory. Please try again.")
+            console.error("Directory picker failed:", err)
+        }
+    }
+
+    const handleNext = () => {
+        if (step === "welcome") {
+            navigateToStep("directory")
+            return
+        }
+        if (step === "directory") {
+            if (!hasScanned) return
+            navigateToStep("provider")
+            return
+        }
+    }
+
+    const handleBack = () => {
+        if (step === "provider") {
+            navigateToStep("directory")
+        } else if (step === "directory") {
+            navigateToStep("welcome")
+        }
+    }
+
+    const handleScan = async () => {
+        if (!directory || isScanning) return
+
+        setIsScanning(true)
+        setScanProgress({ phase: "scanning", filesFound: 0 })
+
+        try {
+            // Begin staging before loading files into WASM
+            await fileService.beginStaging()
+
+            // Initialize the file service - callbacks already configured in constructor
+            const stats = await fileService.initialize(directory)
+
+            // Ensure final stats are shown
+            setScanProgress(prev => prev ? { ...prev, filesFound: stats.filesScanned, loaded: stats.filesLoaded, total: stats.filesScanned } : null)
+            setScanStats(stats)
+            setIsScanning(false)
+            setHasScanned(true)
+        } catch (err) {
+            setIsScanning(false)
+            setError(err instanceof Error ? err.message : "Failed to scan directory")
+            console.error("Scan failed:", err)
+        }
+    }
+
+    const handleSubmit = async () => {
+        if (!apiKey || !directory || !hasScanned) return
+
+        localStorage.setItem("anthropicApiKey", apiKey)
+        localStorage.setItem("lastProvider", "anthropic")
+        onComplete({ provider, apiKey, model, directory, mode, fileService })
+    }
+
+    const renderScanProgress = () => {
+        if (!scanProgress) return null
+
+        return (
+            <div className="fixed inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50">
+                <div className="bg-card border rounded-lg p-6 max-w-md w-full mx-4 space-y-4">
+                    <div className="flex items-center gap-3">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        <div className="flex-1">
+                            <div className="text-sm font-medium">
+                                {scanProgress.phase === "scanning"
+                                    ? "Scanning directory..."
+                                    : "Loading files into memory..."}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                                {scanProgress.phase === "scanning" ? (
+                                    <>Found {scanProgress.filesFound.toLocaleString()} files</>
+                                ) : (
+                                    <>Loaded {scanProgress.loaded?.toLocaleString()} of {scanProgress.total?.toLocaleString()} files</>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {scanProgress.phase === "loading" && scanProgress.total && scanProgress.loaded && (
+                        <div className="w-full bg-secondary rounded-full h-2">
+                            <div
+                                className="bg-primary h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${(scanProgress.loaded / scanProgress.total) * 100}%` }}
+                            />
+                        </div>
+                    )}
+
+                    {scanProgress.currentPath && (
+                        <div className="text-xs text-muted-foreground truncate" title={scanProgress.currentPath}>
+                            {scanProgress.currentPath.length > 60
+                                ? `...${scanProgress.currentPath.slice(-57)}`
+                                : scanProgress.currentPath}
+                        </div>
+                    )}
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={() => { }}>
+            <DialogContent className="sm:max-w-[500px] overflow-hidden p-0" hideCloseButton>
+                <div className="relative" style={{ height: "600px" }}>
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={step}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                            className="absolute inset-0 flex flex-col"
+                        >
+                            <DialogHeader className="p-6 pb-0">
+                                <DialogTitle className="flex items-center gap-2">
+                                    <Train className="h-5 w-5" />
+                                    {step === "welcome" ? "Welcome to Conduit" : "Setup Conduit"}
+                                </DialogTitle>
+                                {step !== "welcome" && (
+                                    <DialogDescription>
+                                        {step === "directory" && "Select a directory to work with"}
+                                        {step === "provider" && "Choose your AI provider and enter your API key"}
+                                    </DialogDescription>
+                                )}
+                            </DialogHeader>
+
+                            <div className="flex-1 overflow-y-auto p-6 pt-4">
+                                {step === "welcome" && (
+                                    <div className="flex flex-col justify-center h-full space-y-10">
+                                        <div className="text-center space-y-6">
+                                            <h2 className="text-2xl font-bold">
+                                                Your AI assistant can now edit files directly on your computer
+                                            </h2>
+                                            <p className="text-muted-foreground max-w-md mx-auto">
+                                                No uploads. No downloads. Everything runs locally in your browser using WebAssembly.
+                                            </p>
+                                        </div>
+
+                                        <div className="space-y-4 max-w-sm mx-auto w-full">
+                                            <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-primary/5 border border-primary/10">
+                                                <HardDrive className="h-5 w-5 text-primary flex-shrink-0" />
+                                                <span>Direct access to files on your disk</span>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-orange-500/5 border border-orange-500/10">
+                                                <Cpu className="h-5 w-5 text-orange-500 flex-shrink-0" />
+                                                <span>Rust-powered performance</span>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-green-500/5 border border-green-500/10">
+                                                <Shield className="h-5 w-5 text-green-500 flex-shrink-0" />
+                                                <span>Review every change before it&apos;s written</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                {step === "provider" && (
+                                    <div className="space-y-6">
+                                        <div className="grid gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-sm font-medium">AI Provider</label>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>Using Anthropic Claude models for AI assistance</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </div>
+                                            <div className="bg-muted/50 p-3 rounded-md">
+                                                <p className="text-sm text-muted-foreground">Using Anthropic Claude</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid gap-2">
+                                            <label htmlFor="apiKey" className="text-sm font-medium">
+                                                Anthropic API Key
+                                            </label>
+                                            <Input
+                                                id="apiKey"
+                                                type="password"
+                                                placeholder="sk-ant-..."
+                                                value={apiKey}
+                                                onChange={(e) => setApiKey(e.target.value)}
+                                            />
+                                        </div>
+
+                                        <div className="grid gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <label htmlFor="model" className="text-sm font-medium">
+                                                    Model
+                                                </label>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>Choose the AI model to use for this session</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </div>
+                                            <select
+                                                id="model"
+                                                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                                value={model}
+                                                onChange={(e) => setModel(e.target.value)}
+                                            >
+                                                {MODELS[provider].map(m => (
+                                                    <option key={m.value} value={m.value}>{m.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {step === "directory" && (
+                                    <div className="flex flex-col h-full space-y-8">
+                                        <div className="max-w-md mx-auto w-full">
+                                            <Button
+                                                variant="outline"
+                                                onClick={handleDirectoryPicker}
+                                                disabled={isScanning || hasScanned}
+                                                className="w-full px-6 py-4"
+                                            >
+                                                <Folder className="h-4 w-4 mr-2" />
+                                                {directory ? directory.name : "Select Directory"}
+                                            </Button>
+                                        </div>
+
+                                        <div className="space-y-3 max-w-md mx-auto w-full">
+                                            <label className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10 cursor-pointer transition-colors hover:bg-primary/10">
+                                                <input
+                                                    type="radio"
+                                                    name="mode"
+                                                    checked={mode === "readwrite"}
+                                                    onChange={() => setMode("readwrite")}
+                                                    disabled={isScanning || hasScanned}
+                                                />
+                                                <div className="flex-1">
+                                                    <div className="text-sm">Read & Write</div>
+                                                    <div className="text-xs text-muted-foreground">AI can suggest modifications</div>
+                                                </div>
+                                            </label>
+                                            <label className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-muted/50 cursor-pointer transition-colors hover:bg-muted/50">
+                                                <input
+                                                    type="radio"
+                                                    name="mode"
+                                                    checked={mode === "read"}
+                                                    onChange={() => setMode("read")}
+                                                    disabled={isScanning || hasScanned}
+                                                />
+                                                <div className="flex-1">
+                                                    <div className="text-sm">Read Only</div>
+                                                    <div className="text-xs text-muted-foreground">AI can only view files</div>
+                                                </div>
+                                            </label>
+
+                                            <p className="text-xs text-muted-foreground text-center mt-4">
+                                                All changes require your approval before being written
+                                            </p>
+                                        </div>
+
+                                        {isScanning && renderScanProgress()}
+
+                                        {scanStats && !isScanning && (
+                                            <div className="mt-6 max-w-md mx-auto w-full">
+                                                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                                                    <div className="flex items-center justify-center gap-6 text-sm">
+                                                        <div className="text-center">
+                                                            <div className="font-semibold text-green-600">{scanStats.filesLoaded}</div>
+                                                            <div className="text-xs text-muted-foreground">files loaded</div>
+                                                        </div>
+                                                        <div className="w-px h-8 bg-green-500/20" />
+                                                        <div className="text-center">
+                                                            <div className="font-semibold text-green-600">{formatFileSize(scanStats.totalSize)}</div>
+                                                            <div className="text-xs text-muted-foreground">total size</div>
+                                                        </div>
+                                                        <div className="w-px h-8 bg-green-500/20" />
+                                                        <div className="text-center">
+                                                            <div className="font-semibold text-green-600">{(scanStats.duration / 1000).toFixed(1)}s</div>
+                                                            <div className="text-xs text-muted-foreground">scan time</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {error && (
+                                    <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                                        <AlertCircle className="h-4 w-4" />
+                                        {error}
+                                    </div>
+                                )}
+                            </div>
+
+                            <DialogFooter className="p-6 pt-0">
+                                {(step === "directory" || step === "provider") && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleBack}
+                                        disabled={isScanning}
+                                    >
+                                        <ChevronLeft className="h-4 w-4" />
+                                        Back
+                                    </Button>
+                                )}
+
+                                {step === "welcome" && (
+                                    <Button type="button" onClick={handleNext}>
+                                        Next
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                )}
+
+                                {step === "directory" && (
+                                    directory && !hasScanned ? (
+                                        <Button
+                                            type="button"
+                                            onClick={handleScan}
+                                            disabled={isScanning}
+                                        >
+                                            {isScanning ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    Scanning...
+                                                </>
+                                            ) : (
+                                                "Scan"
+                                            )}
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            type="button"
+                                            onClick={handleNext}
+                                            disabled={!hasScanned}
+                                        >
+                                            Next
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    )
+                                )}
+
+                                {step === "provider" && (
+                                    <Button
+                                        type="button"
+                                        onClick={handleSubmit}
+                                        disabled={!apiKey}
+                                    >
+                                        Start
+                                    </Button>
+                                )}
+                            </DialogFooter>
+                        </motion.div>
+                    </AnimatePresence>
+                </div>
+            </DialogContent>
+        </Dialog>
+    )
+}

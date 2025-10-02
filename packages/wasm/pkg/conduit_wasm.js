@@ -414,6 +414,33 @@ export function create_index_file(path, content, allow_overwrite) {
 }
 
 /**
+ * List files from the index with pagination support.
+ *
+ * # Arguments
+ * * `start` - Starting index (0-based, inclusive)
+ * * `stop` - Ending index (exclusive). If 0, returns all files from start.
+ * * `use_staged` - If true, list from staged index; otherwise list from active index
+ *
+ * # Returns
+ * A JavaScript object containing:
+ * - `files`: Array of file objects with path and metadata
+ * - `total`: Total number of files in the index
+ * - `start`: The actual start index used
+ * - `end`: The actual end index (exclusive) of returned files
+ * @param {number} start
+ * @param {number} stop
+ * @param {boolean} use_staged
+ * @returns {any}
+ */
+export function list_files(start, stop, use_staged) {
+    const ret = wasm.list_files(start, stop, use_staged);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Delete a file from the staged index, if it exists.
  * @param {string} path
  * @returns {any}

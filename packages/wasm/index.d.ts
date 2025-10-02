@@ -143,6 +143,26 @@ export function delete_index_file(path: string): {
 };
 
 /**
+ * List files from the index with pagination support.
+ * @param start - Starting index (0-based, inclusive)
+ * @param stop - Ending index (exclusive). If 0, returns all files from start.
+ * @param use_staged - If true, list from staged index; otherwise list from active index
+ * @returns Object containing files array, total count, and actual pagination bounds
+ * @throws {Error} If use_staged is true but no staging session is active
+ */
+export function list_files(start: number, stop: number, use_staged: boolean): {
+  files: Array<{
+    path: string;
+    size: number;
+    mtime: number;
+    extension: string;
+  }>;
+  total: number;
+  start: number;
+  end: number;
+};
+
+/**
  * Default export for initializing the WASM module
  */
 export default function init(

@@ -26,10 +26,17 @@ export const deleteFileSchema = z.object({
     path: z.string().describe('File path to delete')
 });
 
+export const listFilesSchema = z.object({
+    start: z.number().min(0).default(0).describe('Starting index (0-based, inclusive)'),
+    limit: z.number().min(0).default(100).describe('Maximum number of files to return. 0 means no limit'),
+    useStaged: z.boolean().default(false).describe('If true, list from staged index; otherwise from active index')
+});
+
 // Type inference from schemas
 export type ReadFileParams = z.infer<typeof readFileSchema>;
 export type CreateFileParams = z.infer<typeof createFileSchema>;
 export type DeleteFileParams = z.infer<typeof deleteFileSchema>;
+export type ListFilesParams = z.infer<typeof listFilesSchema>;
 
 
 /**
@@ -139,6 +146,49 @@ export class FileService {
             throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
                 operation: 'delete_file',
                 path: validated.path
+            });
+        }
+    }
+
+    /**
+     * List files from the WASM index with pagination
+     */
+    async listFiles(params?: ListFilesParams): Promise<{
+        files: Array<{
+            path: string;
+            size: number;
+            mtime: number;
+            extension: string;
+        }>;
+        total: number;
+        hasMore: boolean;
+    }> {
+        // Parse with defaults
+        const validated = listFilesSchema.parse(params || {});
+        const { start, limit, useStaged } = validated;
+
+        await this.ensureWasmInitialized();
+
+        try {
+            // Calculate stop index for WASM function (exclusive)
+            const stop = limit === 0 ? 0 : start + limit;
+
+            const result = wasm.list_files(start, stop, useStaged);
+
+            // Check if there are more files beyond what we returned
+            const hasMore = result.end < result.total;
+
+            return {
+                files: result.files,
+                total: result.total,
+                hasMore
+            };
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
+                operation: 'list_files',
+                start,
+                limit,
+                useStaged
             });
         }
     }
@@ -326,6 +376,13 @@ export class FileService {
                     return this.getStagedModifications();
                 }
             },
+            listFiles: {
+                description: 'List files from the WASM index with pagination support. Returns file paths with metadata (size, mtime, extension). Use pagination to handle large directories efficiently. Can list from either the active or staged index.',
+                parameters: listFilesSchema,
+                execute: async (params?: ListFilesParams) => {
+                    return this.listFiles(params);
+                }
+            },
             beginStaging: {
                 description: 'Begin a manual staging session. Call this before making multiple file modifications that you want to group together. Changes will be held in memory until committed with commitChanges or reverted with revertChanges.',
                 parameters: z.object({}),
@@ -363,6 +420,7 @@ export const readFile = (params: ReadFileParams) => fileService.readFile(params)
 export const createFile = (params: CreateFileParams) => fileService.createFile(params);
 export const deleteFile = (params: DeleteFileParams) => fileService.deleteFile(params);
 export const getStagedModifications = () => fileService.getStagedModifications();
+export const listFiles = (params?: ListFilesParams) => fileService.listFiles(params);
 export const beginStaging = async () => fileService.beginStaging();
 export const commitChanges = () => fileService.commitChanges();
 export const revertChanges = async () => fileService.revertChanges();

@@ -221,8 +221,15 @@ impl Index {
         self.files.is_empty()
     }
 
-    /// Iterator over all files.
+    /// Iterator over all files (unordered).
     pub fn iter(&self) -> impl Iterator<Item = (&PathKey, &FileEntry)> {
         self.files.iter()
+    }
+
+    /// Iterator over all files in sorted order by path.
+    pub fn iter_sorted(&self) -> impl Iterator<Item = (&PathKey, &FileEntry)> + '_ {
+        self.prefixes
+            .iter()
+            .filter_map(|path| self.get_file(path).map(|entry| (path, entry)))
     }
 }
