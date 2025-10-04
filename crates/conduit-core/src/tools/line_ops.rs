@@ -16,6 +16,9 @@ pub fn apply_line_operations(
     content: &str,
     operations: Vec<(usize, LineOperation)>,
 ) -> (String, usize, isize) {
+    // Check if original content ends with a newline
+    let ends_with_newline = content.ends_with('\n');
+
     let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
 
     // Sort operations by line number (descending) to avoid index shifting
@@ -66,7 +69,13 @@ pub fn apply_line_operations(
         }
     }
 
-    let modified_content = lines.join("\n");
+    let mut modified_content = lines.join("\n");
+
+    // Preserve trailing newline if the original had one
+    if ends_with_newline && !modified_content.is_empty() {
+        modified_content.push('\n');
+    }
+
     (modified_content, lines_modified, total_delta)
 }
 
@@ -152,6 +161,53 @@ mod tests {
         let (result, modified, delta) = apply_line_operations(content, ops);
 
         assert_eq!(result, "line 1\nline 2");
+        assert_eq!(modified, 0);
+        assert_eq!(delta, 0);
+    }
+
+    #[test]
+    fn test_preserve_trailing_newline() {
+        // Test that trailing newline is preserved
+        let content = "line 1\nline 2\nline 3\n";
+        let ops = vec![(2, LineOperation::Replace("modified line 2".to_string()))];
+
+        let (result, modified, delta) = apply_line_operations(content, ops);
+
+        assert_eq!(result, "line 1\nmodified line 2\nline 3\n");
+        assert!(
+            result.ends_with('\n'),
+            "Trailing newline should be preserved"
+        );
+        assert_eq!(modified, 1);
+        assert_eq!(delta, 0);
+    }
+
+    #[test]
+    fn test_no_trailing_newline_unchanged() {
+        // Test that files without trailing newline remain without one
+        let content = "line 1\nline 2\nline 3";
+        let ops = vec![(2, LineOperation::Replace("modified line 2".to_string()))];
+
+        let (result, modified, delta) = apply_line_operations(content, ops);
+
+        assert_eq!(result, "line 1\nmodified line 2\nline 3");
+        assert!(
+            !result.ends_with('\n'),
+            "No trailing newline should be added"
+        );
+        assert_eq!(modified, 1);
+        assert_eq!(delta, 0);
+    }
+
+    #[test]
+    fn test_empty_file_operations() {
+        // Test operations on empty content
+        let content = "";
+        let ops = vec![(1, LineOperation::Replace("new line".to_string()))];
+
+        let (result, modified, delta) = apply_line_operations(content, ops);
+
+        assert_eq!(result, "");
         assert_eq!(modified, 0);
         assert_eq!(delta, 0);
     }
