@@ -23,6 +23,7 @@ export function begin_file_load(): void;
  * @param paths - File paths (will be normalized internally)
  * @param contents - Array of Uint8Arrays with file contents
  * @param mtimes - Last modified timestamps (JavaScript milliseconds since epoch)
+ * @param permissions - Array of booleans indicating if each file is editable
  * @returns Number of files loaded in this batch
  * @throws {Error} If array lengths don't match or paths are invalid
  */
@@ -30,6 +31,7 @@ export function load_file_batch(
   paths: string[],
   contents: Array<ArrayBuffer | Uint8Array | string>, // js_sys::Array
   mtimes: number[],
+  permissions: boolean[],
 ): number;
 
 /**
@@ -196,16 +198,16 @@ export function delete_index_file(path: string): {
 };
 
 /**
- * Replace specific lines in a file by line number.
+ * Replace specific lines or line ranges in a file.
  * @param path - The file path to modify
- * @param replacements - Array of [lineNumber, newContent] pairs (line numbers are 1-based)
+ * @param replacements - Array of [lineNumber, newContent] for single line or [startLine, endLine, newContent] for range (1-based, inclusive)
  * @param use_staged - If true, modify staged index; otherwise modify active index
  * @returns Object containing path, linesReplaced, linesAdded, totalLines, and originalLines
  * @throws {Error} If file not found or line numbers invalid
  */
 export function replace_lines(
   path: string,
-  replacements: Array<[number, string]>,
+  replacements: Array<[number, string] | [number, number, string]>,
   use_staged: boolean
 ): {
   path: string;
@@ -293,6 +295,7 @@ export function list_files(start: number, stop: number, use_staged: boolean, glo
     size: number;
     mtime: number;
     extension: string;
+    editable: boolean;
   }>;
   total: number;
   start: number;

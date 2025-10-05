@@ -11,6 +11,9 @@ export interface FileMetadata {
   type: 'file' | 'directory';
   lastModified: number;
   handle?: FileSystemHandle; // File or directory handle for direct access
+  editable?: boolean; // Whether the file can be edited (false for PDFs, DOCX, etc.)
+  originalSize?: number; // Original file size before text extraction
+  extracted?: boolean; // Whether text was extracted from a document
 }
 
 export interface ScanOptions {

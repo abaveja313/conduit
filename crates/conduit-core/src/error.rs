@@ -46,7 +46,6 @@ pub enum Error {
     #[error(transparent)]
     Grep(#[from] grep_regex::Error),
 
-    // todo: do we really need this?
     #[error(transparent)]
     GrepMatcher(#[from] grep_matcher::NoError),
 
@@ -55,6 +54,9 @@ pub enum Error {
 
     #[error("no replacement found at ({0}, {1})")]
     NoReplacementFound(usize, usize),
+
+    #[error("file is not editable: {0}")]
+    ReadOnlyFile(String),
 }
 
 impl SinkError for Error {

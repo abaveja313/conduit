@@ -4,6 +4,7 @@ import { FileScanner } from './scanner.js';
 import { createLogger, ErrorCodes, wrapError, getErrorMessage } from '@conduit/shared';
 import pLimit from 'p-limit';
 import { isBinaryFile, normalizePath, logFileOperation } from './file-utils.js';
+import { DocumentExtractor } from './document-extractor.js';
 
 const logger = createLogger('file-manager');
 
@@ -17,12 +18,15 @@ export interface FileManagerConfig {
   onProgress?: (loaded: number, total: number) => void;
   /** Progress callback for scanning phase */
   onScanProgress?: (filesFound: number, currentPath?: string, fileSize?: number) => void;
+  /** Progress callback for document extraction phase */
+  onDocumentExtractionProgress?: (extracted: number, total: number, currentFile?: string) => void;
 }
 
 export interface FileManagerStats {
   filesScanned: number;
   filesLoaded: number;
   binaryFilesSkipped: number;
+  documentsExtracted: number;
   duration: number;
   totalSize: number;
 }
@@ -36,9 +40,11 @@ export class FileManager {
   private handles = new Map<string, FileSystemFileHandle>();
   private rootDirectoryHandle?: FileSystemDirectoryHandle;
   private limit: ReturnType<typeof pLimit>;
+  // Store extracted content to avoid re-extraction
+  private extractedContent = new Map<string, Uint8Array>();
 
   private readonly defaultConfig: Required<
-    Omit<FileManagerConfig, 'onProgress' | 'onScanProgress'>
+    Omit<FileManagerConfig, 'onProgress' | 'onScanProgress' | 'onDocumentExtractionProgress'>
   > = {
       concurrency: 10,
       batchSize: 1000,
@@ -127,6 +133,7 @@ export class FileManager {
       type: 'file',
       lastModified,
       handle,
+      editable: true, // New files are editable by default
     });
   }
 
@@ -193,7 +200,12 @@ export class FileManager {
         directory: directoryHandle.name,
       });
     }
-    logger.info(`Scanned ${this.metadata.size} files, loading to WASM...`);
+    logger.info(`Scanned ${this.metadata.size} files, processing documents...`);
+
+    // Extract text from documents before loading to WASM
+    const documentsExtracted = await this.extractDocuments();
+
+    logger.info(`Extracted ${documentsExtracted} documents, loading to WASM...`);
 
     // Load to WASM
     const binaryFilesSkipped = await this.loadToWasm();
@@ -202,12 +214,101 @@ export class FileManager {
       filesScanned: this.metadata.size,
       filesLoaded: wasm.file_count(),
       binaryFilesSkipped,
+      documentsExtracted,
       duration: performance.now() - startTime,
       totalSize: Array.from(this.metadata.values()).reduce((sum, f) => sum + f.size, 0),
     };
 
     logger.info('File initialization complete', stats);
     return stats;
+  }
+
+  /**
+   * Extract text from documents (PDFs, DOCX) before loading to WASM
+   * Returns the number of documents that had text extracted
+   */
+  private async extractDocuments(): Promise<number> {
+    const documentPaths = Array.from(this.metadata.entries())
+      .filter(([path, metadata]) => {
+        return metadata.type === 'file' && DocumentExtractor.isSupported(path);
+      })
+      .map(([path]) => path);
+
+    if (documentPaths.length === 0) {
+      return 0;
+    }
+
+    logger.info(`Found ${documentPaths.length} documents to extract`);
+    let extractedCount = 0;
+
+    // Process documents in batches
+    const batchSize = Math.min(this.config.batchSize!, 10); // Smaller batches for documents
+
+    for (let i = 0; i < documentPaths.length; i += batchSize) {
+      const batch = documentPaths.slice(i, i + batchSize);
+
+      await Promise.all(
+        batch.map((path) =>
+          this.limit(async () => {
+            try {
+              const handle = this.handles.get(path);
+              if (!handle) {
+                logger.warn(`No handle found for document: ${path}`);
+                return;
+              }
+
+              const file = await handle.getFile();
+              const buffer = await file.arrayBuffer();
+
+              // Report progress
+              this.config.onDocumentExtractionProgress?.(
+                Math.min(i + batch.indexOf(path) + 1, documentPaths.length),
+                documentPaths.length,
+                path
+              );
+
+              const extractedText = await DocumentExtractor.extractHtml(path, buffer);
+
+              if (extractedText) {
+                // Create a new buffer with the extracted text
+                const textEncoder = new TextEncoder();
+                const textBuffer = textEncoder.encode(extractedText);
+
+                // Store the extracted content
+                this.extractedContent.set(path, textBuffer);
+
+                // Update metadata
+                const metadata = this.metadata.get(path);
+                if (metadata) {
+                  this.metadata.set(path, {
+                    ...metadata,
+                    editable: false,
+                    originalSize: metadata.size,
+                    size: textBuffer.byteLength,
+                    extracted: true
+                  });
+                }
+
+                extractedCount++;
+                logger.info(`Extracted text from ${path}: ${file.size} bytes -> ${textBuffer.byteLength} bytes`);
+              }
+            } catch (error) {
+              logger.error(`Failed to extract document ${path}:`, error);
+              // Mark as non-editable even if extraction failed
+              const metadata = this.metadata.get(path);
+              if (metadata) {
+                this.metadata.set(path, {
+                  ...metadata,
+                  editable: false
+                });
+              }
+            }
+          })
+        )
+      );
+    }
+
+    return extractedCount;
   }
 
   /**
@@ -239,6 +340,24 @@ export class FileManager {
             this.limit(async () => {
               try {
                 const handle = this.handles.get(path)!;
+                const metadata = this.metadata.get(path);
+
+                // Check if this is an extracted document
+                if (metadata?.extracted) {
+                  // Use the pre-extracted content if available
+                  const extractedContent = this.extractedContent.get(path);
+                  if (extractedContent) {
+                    return {
+                      path,
+                      content: extractedContent,
+                    };
+                  }
+
+                  // If no pre-extracted content, skip this file
+                  logger.warn(`No extracted content found for ${path}, skipping`);
+                  return null;
+                }
+
                 const file = await handle.getFile();
 
                 // Check if file is binary before loading
@@ -276,20 +395,75 @@ export class FileManager {
           const timestamps = validPaths.map(
             (p) => this.metadata.get(p)?.lastModified ?? Date.now(),
           );
+          // Get editable flags for each file
+          const permissions = validPaths.map(
+            (p) => this.metadata.get(p)?.editable !== false
+          );
 
-          // Load batch (contents is Uint8Array[] - wasm-bindgen will handle conversion)
-          try {
-            wasm.load_file_batch(normalizedPaths, contents, timestamps);
-          } catch (batchError) {
-            console.error('Error loading file batch:', batchError);
-            console.log('Batch details:', {
-              pathsCount: normalizedPaths.length,
-              contentsCount: contents.length,
-              timestampsCount: timestamps.length,
-              firstPath: normalizedPaths[0],
-              firstContentLength: contents[0]?.length
+
+          if (!Array.isArray(normalizedPaths) || !Array.isArray(contents) || !Array.isArray(timestamps) || !Array.isArray(permissions)) {
+            console.error('Invalid batch data - not arrays:', {
+              normalizedPaths: normalizedPaths,
+              contents: contents,
+              timestamps: timestamps,
+              permissions: permissions
             });
-            throw batchError;
+            throw new Error('Invalid batch data: parameters must be arrays');
+          }
+
+          // Check for undefined content
+          const undefinedContentIndex = contents.findIndex(c => c === undefined || c === null);
+          if (undefinedContentIndex !== -1) {
+            console.error('Found undefined content at index:', undefinedContentIndex, 'for path:', normalizedPaths[undefinedContentIndex]);
+            // Filter out entries with undefined content
+            const validIndices = contents
+              .map((c, i) => c !== undefined && c !== null ? i : -1)
+              .filter(i => i !== -1);
+
+            const filteredPaths = validIndices.map(i => normalizedPaths[i]);
+            const filteredContents = validIndices.map(i => contents[i]) as Uint8Array[];
+            const filteredTimestamps = validIndices.map(i => timestamps[i]);
+            const filteredPermissions = validIndices.map(i => permissions[i]);
+
+            if (filteredContents.length === 0) {
+              console.warn('No valid content in batch, skipping');
+              continue;
+            }
+
+            try {
+              wasm.load_file_batch(filteredPaths, filteredContents, filteredTimestamps, filteredPermissions);
+            } catch (filteredError) {
+              console.error('Error loading filtered batch:', filteredError);
+              console.log('Filtered batch details:', {
+                pathsCount: filteredPaths.length,
+                contentsCount: filteredContents.length,
+                timestampsCount: filteredTimestamps.length,
+                permissionsCount: filteredPermissions.length
+              });
+              throw filteredError;
+            }
+          } else {
+            // Load batch (contents is Uint8Array[] - wasm-bindgen will handle conversion)
+            try {
+              wasm.load_file_batch(normalizedPaths, contents, timestamps, permissions);
+            } catch (batchError) {
+              console.error('Error loading file batch:', batchError);
+              console.log('Batch details:', {
+                pathsCount: normalizedPaths.length,
+                contentsCount: contents.length,
+                timestampsCount: timestamps.length,
+                permissionsCount: permissions.length,
+                firstPath: normalizedPaths[0],
+                firstContentLength: contents[0]?.length,
+                // Add more debugging info
+                pathsType: Array.isArray(normalizedPaths) ? 'array' : typeof normalizedPaths,
+                contentsType: Array.isArray(contents) ? 'array' : typeof contents,
+                timestampsType: Array.isArray(timestamps) ? 'array' : typeof timestamps,
+                permissionsType: Array.isArray(permissions) ? 'array' : typeof permissions,
+                contentTypes: contents.map(c => c ? c.constructor.name : 'null/undefined')
+              });
+              throw batchError;
+            }
           }
         }
 

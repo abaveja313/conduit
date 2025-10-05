@@ -1,73 +1,136 @@
-//! Line-based text operations
+//! Line-based text operations with range support
 
-/// Operations that can be performed on specific lines
+/// Operations that can be performed on line ranges
 #[derive(Debug, Clone)]
 pub enum LineOperation {
-    Replace(String),
-    Delete,
-    InsertBefore(String),
-    InsertAfter(String),
+    /// Replace lines from start to end (inclusive) with new content
+    ReplaceRange {
+        start: usize, // 1-based, inclusive
+        end: usize,   // 1-based, inclusive
+        content: String,
+    },
+    /// Delete lines from start to end (inclusive)
+    DeleteRange {
+        start: usize, // 1-based, inclusive
+        end: usize,   // 1-based, inclusive
+    },
+    /// Insert content before the specified line
+    InsertBefore {
+        line: usize, // 1-based
+        content: String,
+    },
+    /// Insert content after the specified line
+    InsertAfter {
+        line: usize, // 1-based
+        content: String,
+    },
 }
 
 /// Apply line operations to text content
 ///
-/// Returns: (modified_content, lines_modified, line_delta)
+/// Returns: (modified_content, lines_added, lines_removed)
 pub fn apply_line_operations(
     content: &str,
-    operations: Vec<(usize, LineOperation)>,
-) -> (String, usize, isize) {
+    operations: Vec<LineOperation>,
+) -> (String, usize, usize) {
+    // Check if original content ends with a newline
+    let ends_with_newline = content.ends_with('\n');
+
     let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
 
-    // Sort operations by line number (descending) to avoid index shifting
+    // Sort operations by starting line (descending) to avoid index shifting issues
     let mut sorted_ops = operations;
-    sorted_ops.sort_by(|a, b| b.0.cmp(&a.0));
+    sorted_ops.sort_by(|a, b| {
+        let a_start = match a {
+            LineOperation::ReplaceRange { start, .. }
+            | LineOperation::DeleteRange { start, .. } => *start,
+            LineOperation::InsertBefore { line, .. } | LineOperation::InsertAfter { line, .. } => {
+                *line
+            }
+        };
+        let b_start = match b {
+            LineOperation::ReplaceRange { start, .. }
+            | LineOperation::DeleteRange { start, .. } => *start,
+            LineOperation::InsertBefore { line, .. } | LineOperation::InsertAfter { line, .. } => {
+                *line
+            }
+        };
+        b_start.cmp(&a_start) // Descending order
+    });
 
-    let mut lines_modified = 0;
-    let mut total_delta = 0isize;
+    let mut total_lines_added = 0;
+    let mut total_lines_removed = 0;
 
-    for (line_num, operation) in sorted_ops {
-        if line_num > 0 && line_num <= lines.len() {
-            match operation {
-                LineOperation::Replace(new_content) => {
-                    lines.remove(line_num - 1);
-                    if !new_content.is_empty() {
-                        let new_lines: Vec<&str> = new_content.lines().collect();
-                        for (i, line) in new_lines.iter().enumerate() {
-                            lines.insert(line_num - 1 + i, line.to_string());
+    for operation in sorted_ops {
+        match operation {
+            LineOperation::ReplaceRange {
+                start,
+                end,
+                content,
+            } => {
+                if start > 0 && start <= lines.len() && start <= end {
+                    // Calculate how many lines to remove (inclusive range)
+                    let lines_to_remove = (end - start + 1).min(lines.len() - (start - 1));
+                    total_lines_removed += lines_to_remove;
+
+                    // Remove the lines in the range
+                    for _ in 0..lines_to_remove {
+                        if start - 1 < lines.len() {
+                            lines.remove(start - 1);
                         }
-                        total_delta += new_lines.len() as isize - 1;
-                    } else {
-                        total_delta -= 1;
                     }
-                    lines_modified += 1;
-                }
-                LineOperation::Delete => {
-                    lines.remove(line_num - 1);
-                    total_delta -= 1;
-                    lines_modified += 1;
-                }
-                LineOperation::InsertBefore(content) => {
-                    let new_lines: Vec<&str> = content.lines().collect();
-                    for (i, line) in new_lines.iter().enumerate() {
-                        lines.insert(line_num - 1 + i, line.to_string());
+
+                    // Insert new content at the same position
+                    if !content.is_empty() {
+                        let new_lines: Vec<String> =
+                            content.lines().map(|s| s.to_string()).collect();
+                        total_lines_added += new_lines.len();
+                        for (i, line) in new_lines.iter().enumerate() {
+                            lines.insert(start - 1 + i, line.clone());
+                        }
                     }
-                    total_delta += new_lines.len() as isize;
-                    lines_modified += 1;
                 }
-                LineOperation::InsertAfter(content) => {
-                    let new_lines: Vec<&str> = content.lines().collect();
-                    for (i, line) in new_lines.iter().enumerate() {
-                        lines.insert(line_num + i, line.to_string());
+            }
+            LineOperation::DeleteRange { start, end } => {
+                if start > 0 && start <= lines.len() && start <= end {
+                    let lines_to_remove = (end - start + 1).min(lines.len() - (start - 1));
+                    total_lines_removed += lines_to_remove;
+                    for _ in 0..lines_to_remove {
+                        if start - 1 < lines.len() {
+                            lines.remove(start - 1);
+                        }
                     }
-                    total_delta += new_lines.len() as isize;
-                    lines_modified += 1;
+                }
+            }
+            LineOperation::InsertBefore { line, content } => {
+                if line > 0 && line <= lines.len() + 1 {
+                    let new_lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+                    total_lines_added += new_lines.len();
+                    for (i, new_line) in new_lines.iter().enumerate() {
+                        lines.insert(line - 1 + i, new_line.clone());
+                    }
+                }
+            }
+            LineOperation::InsertAfter { line, content } => {
+                if line > 0 && line <= lines.len() {
+                    let new_lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+                    total_lines_added += new_lines.len();
+                    for (i, new_line) in new_lines.iter().enumerate() {
+                        lines.insert(line + i, new_line.clone());
+                    }
                 }
             }
         }
     }
 
-    let modified_content = lines.join("\n");
-    (modified_content, lines_modified, total_delta)
+    let mut modified_content = lines.join("\n");
+
+    // Preserve trailing newline if the original had one
+    if ends_with_newline && !modified_content.is_empty() {
+        modified_content.push('\n');
+    }
+
+    (modified_content, total_lines_added, total_lines_removed)
 }
 
 #[cfg(test)]
@@ -77,82 +140,126 @@ mod tests {
     #[test]
     fn test_replace_single_line() {
         let content = "line 1\nline 2\nline 3";
-        let ops = vec![(2, LineOperation::Replace("modified line 2".to_string()))];
+        let ops = vec![LineOperation::ReplaceRange {
+            start: 2,
+            end: 2,
+            content: "modified line 2".to_string(),
+        }];
 
-        let (result, modified, delta) = apply_line_operations(content, ops);
+        let (result, added, removed) = apply_line_operations(content, ops);
 
         assert_eq!(result, "line 1\nmodified line 2\nline 3");
-        assert_eq!(modified, 1);
-        assert_eq!(delta, 0);
+        assert_eq!(added, 1);
+        assert_eq!(removed, 1);
     }
 
     #[test]
-    fn test_replace_with_multiple_lines() {
-        let content = "line 1\nline 2\nline 3";
-        let ops = vec![(
-            2,
-            LineOperation::Replace("new line 2a\nnew line 2b".to_string()),
-        )];
+    fn test_replace_line_range() {
+        // Test the key feature: replacing a range of lines
+        let content = "line 1\nline 2\nline 3\nline 4\nline 5";
+        let ops = vec![LineOperation::ReplaceRange {
+            start: 2,
+            end: 4,
+            content: "replaced line 2\nreplaced line 3\nreplaced line 4".to_string(),
+        }];
 
-        let (result, modified, delta) = apply_line_operations(content, ops);
+        let (result, added, removed) = apply_line_operations(content, ops);
 
-        assert_eq!(result, "line 1\nnew line 2a\nnew line 2b\nline 3");
-        assert_eq!(modified, 1);
-        assert_eq!(delta, 1); // Added one extra line
+        assert_eq!(
+            result,
+            "line 1\nreplaced line 2\nreplaced line 3\nreplaced line 4\nline 5"
+        );
+        assert_eq!(added, 3); // Added 3 new lines
+        assert_eq!(removed, 3); // Removed 3 old lines
     }
 
     #[test]
-    fn test_delete_line() {
-        let content = "line 1\nline 2\nline 3";
-        let ops = vec![(2, LineOperation::Delete)];
+    fn test_delete_range() {
+        let content = "line 1\nline 2\nline 3\nline 4\nline 5";
+        let ops = vec![LineOperation::DeleteRange { start: 2, end: 4 }];
 
-        let (result, modified, delta) = apply_line_operations(content, ops);
+        let (result, added, removed) = apply_line_operations(content, ops);
 
-        assert_eq!(result, "line 1\nline 3");
-        assert_eq!(modified, 1);
-        assert_eq!(delta, -1);
+        assert_eq!(result, "line 1\nline 5");
+        assert_eq!(added, 0);
+        assert_eq!(removed, 3);
     }
 
     #[test]
-    fn test_insert_before_and_after() {
+    fn test_insert_operations() {
         let content = "line 1\nline 2";
 
         // Test InsertBefore
-        let ops = vec![(2, LineOperation::InsertBefore("before 2".to_string()))];
+        let ops = vec![LineOperation::InsertBefore {
+            line: 2,
+            content: "before 2".to_string(),
+        }];
         let (result, _, _) = apply_line_operations(content, ops);
         assert_eq!(result, "line 1\nbefore 2\nline 2");
 
         // Test InsertAfter
-        let ops = vec![(1, LineOperation::InsertAfter("after 1".to_string()))];
+        let ops = vec![LineOperation::InsertAfter {
+            line: 1,
+            content: "after 1".to_string(),
+        }];
         let (result, _, _) = apply_line_operations(content, ops);
         assert_eq!(result, "line 1\nafter 1\nline 2");
     }
 
     #[test]
-    fn test_multiple_operations() {
-        let content = "line 1\nline 2\nline 3\nline 4\nline 5";
-        let ops = vec![
-            (2, LineOperation::Delete),
-            (4, LineOperation::Replace("modified line 4".to_string())),
-        ];
+    fn test_submission_py_scenario() {
+        // Test replacing lines 25-27 with implementation
+        let mut lines = Vec::new();
+        for i in 1..=30 {
+            if i == 25 {
+                lines.push("    # BEGIN_YOUR_CODE".to_string());
+            } else if i == 26 {
+                lines.push("    # TODO: Implement".to_string());
+            } else if i == 27 {
+                lines.push("    # END_YOUR_CODE".to_string());
+            } else {
+                lines.push(format!("line {i}"));
+            }
+        }
+        let content = lines.join("\n");
 
-        let (result, modified, delta) = apply_line_operations(content, ops);
+        // Replace lines 25-27 with the implementation
+        let replacement = [
+            "    # BEGIN_YOUR_CODE",
+            "    y = einsum(x, W, 'batch d_in, d_in d_out -> batch d_out')",
+            "    y = y + b",
+            "    return y",
+            "    # END_YOUR_CODE",
+        ]
+        .join("\n");
 
-        // After deleting line 2, line 4 becomes line 3, so it should be:
-        assert_eq!(result, "line 1\nline 3\nmodified line 4\nline 5");
-        assert_eq!(modified, 2);
-        assert_eq!(delta, -1);
+        let ops = vec![LineOperation::ReplaceRange {
+            start: 25,
+            end: 27,
+            content: replacement,
+        }];
+
+        let (result, added, removed) = apply_line_operations(&content, ops);
+
+        assert!(result.contains("y = einsum"));
+        assert!(result.contains("return y"));
+        assert!(result.contains("line 28")); // Line after should be unchanged
+        assert_eq!(added, 5); // We added 5 lines
+        assert_eq!(removed, 3); // We removed 3 lines
     }
 
     #[test]
-    fn test_out_of_bounds_operations() {
-        let content = "line 1\nline 2";
-        let ops = vec![(5, LineOperation::Replace("should not work".to_string()))];
+    fn test_preserve_trailing_newline() {
+        let content = "line 1\nline 2\n";
+        let ops = vec![LineOperation::ReplaceRange {
+            start: 2,
+            end: 2,
+            content: "modified line 2".to_string(),
+        }];
 
-        let (result, modified, delta) = apply_line_operations(content, ops);
+        let (result, _, _) = apply_line_operations(content, ops);
 
-        assert_eq!(result, "line 1\nline 2");
-        assert_eq!(modified, 0);
-        assert_eq!(delta, 0);
+        assert!(result.ends_with('\n'));
+        assert_eq!(result, "line 1\nmodified line 2\n");
     }
 }

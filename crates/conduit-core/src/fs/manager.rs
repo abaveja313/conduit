@@ -88,7 +88,16 @@ impl IndexManager {
         let idx = Arc::make_mut(&mut staged.snapshot); // split on first write
 
         staged.modified.insert(key.clone());
-        idx.upsert_file(key, entry);
+
+        // Invalidate line index cache for this file since it's being modified
+        // This is critical for consecutive line operations to work correctly
+        {
+            let mut cache = self.line_index_cache.write();
+            // Remove all entries for this path (any mtime)
+            cache.retain(|(path, _), _| path != &key);
+        }
+
+        idx.upsert_file(key, entry)?;
         Ok(())
     }
 
@@ -96,33 +105,61 @@ impl IndexManager {
     pub fn update_line_stats(
         &self,
         key: &PathKey,
-        lines_added: isize,
-        lines_removed: isize,
+        _lines_added: isize,   // Not used for cumulative tracking
+        _lines_removed: isize, // Not used for cumulative tracking
         current_line_count: usize,
     ) -> Result<()> {
         let mut g = self.staged.lock();
         let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
 
-        // Get or initialize stats for this file
-        let stats = staged.change_stats.entry(key.clone()).or_insert_with(|| {
-            // Use cached LineIndex for efficient line count
-            let active_index = self.active.load_full();
-            let original_count = self
-                .get_line_index(key, &active_index)
-                .map(|idx| idx.line_count())
-                .unwrap_or(0);
+        // Get the active index for comparison
+        let active_index = self.active.load_full();
 
-            FileChangeStats {
+        // Get original content from active index
+        let (original_content, original_line_count) = match active_index.get_file(key) {
+            Some(entry) => match entry.bytes() {
+                Some(bytes) => {
+                    let content = String::from_utf8_lossy(bytes);
+                    let line_count = content.lines().count();
+                    (content.to_string(), line_count)
+                }
+                None => (String::new(), 0),
+            },
+            None => (String::new(), 0), // New file
+        };
+
+        // Get current staged content
+        let staged_index = Arc::clone(&staged.snapshot);
+        let (staged_content, _) = match staged_index.get_file(key) {
+            Some(entry) => match entry.bytes() {
+                Some(bytes) => {
+                    let content = String::from_utf8_lossy(bytes);
+                    let line_count = content.lines().count();
+                    (content.to_string(), line_count)
+                }
+                None => (String::new(), 0),
+            },
+            None => (String::new(), 0),
+        };
+
+        // Compute actual diff to get accurate added/removed lines
+        use crate::tools::diff::compute_diff;
+        let diff = compute_diff(key.clone(), &original_content, &staged_content);
+
+        // Update or create stats with actual diff numbers
+        let stats = staged
+            .change_stats
+            .entry(key.clone())
+            .or_insert(FileChangeStats {
                 lines_added: 0,
                 lines_removed: 0,
-                original_line_count: original_count,
-                current_line_count: original_count,
-            }
-        });
+                original_line_count,
+                current_line_count: original_line_count,
+            });
 
-        // Update cumulative stats
-        stats.lines_added += lines_added;
-        stats.lines_removed += lines_removed;
+        stats.lines_added = diff.stats.lines_added as isize;
+        stats.lines_removed = diff.stats.lines_removed as isize;
+        stats.original_line_count = original_line_count;
         stats.current_line_count = current_line_count;
 
         Ok(())
@@ -134,7 +171,17 @@ impl IndexManager {
         let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
         let idx = Arc::make_mut(&mut staged.snapshot);
         staged.modified.insert(key.clone());
-        let _ = idx.remove_file(key);
+
+        // Remove from change stats to prevent duplicates
+        staged.change_stats.remove(key);
+
+        // Clear line index cache for this file
+        {
+            let mut cache = self.line_index_cache.write();
+            cache.retain(|(path, _), _| path != key);
+        }
+
+        let _ = idx.remove_file(key)?;
         Ok(())
     }
 

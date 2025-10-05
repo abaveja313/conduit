@@ -113,6 +113,10 @@ function getDataViewMemory0() {
     return cachedDataViewMemory0;
 }
 
+function isLikeNone(x) {
+    return x === undefined || x === null;
+}
+
 function debugString(val) {
     // primitive types
     const type = typeof val;
@@ -176,10 +180,6 @@ function debugString(val) {
     }
     // TODO we could test for more things here, like `Set`s and `Map`s.
     return className;
-}
-
-function isLikeNone(x) {
-    return x === undefined || x === null;
 }
 /**
  * Initialize the WASM module.
@@ -252,14 +252,17 @@ function passArrayF64ToWasm0(arg, malloc) {
  * @param {string[]} paths
  * @param {Array<any>} contents
  * @param {Float64Array} mtimes
+ * @param {boolean[]} permissions
  * @returns {number}
  */
-export function load_file_batch(paths, contents, mtimes) {
+export function load_file_batch(paths, contents, mtimes, permissions) {
     const ptr0 = passArrayJsValueToWasm0(paths, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArrayF64ToWasm0(mtimes, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.load_file_batch(ptr0, len0, contents, ptr1, len1);
+    const ptr2 = passArrayJsValueToWasm0(permissions, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.load_file_batch(ptr0, len0, contents, ptr1, len1, ptr2, len2);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -756,6 +759,11 @@ function __wbg_get_imports() {
         const len1 = WASM_VECTOR_LEN;
         getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+    };
+    imports.wbg.__wbg_wbindgenbooleanget_3fe6f642c7d97746 = function(arg0) {
+        const v = arg0;
+        const ret = typeof(v) === 'boolean' ? v : undefined;
+        return isLikeNone(ret) ? 0xFFFFFF : ret ? 1 : 0;
     };
     imports.wbg.__wbg_wbindgendebugstring_99ef257a3ddda34d = function(arg0, arg1) {
         const ret = debugString(arg1);

@@ -62,16 +62,19 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
     const [isScanning, setIsScanning] = useState(false)
     const [hasScanned, setHasScanned] = useState(false)
     const [scanProgress, setScanProgress] = useState<{
-        phase: "scanning" | "loading"
+        phase: "scanning" | "loading" | "extracting"
         filesFound: number
         currentPath?: string
         loaded?: number
         total?: number
+        extracted?: number
+        extractTotal?: number
     } | null>(null)
     const [scanStats, setScanStats] = useState<{
         filesScanned: number
         filesLoaded: number
         binaryFilesSkipped: number
+        documentsExtracted: number
         totalSize: number
         duration: number
     } | null>(null)
@@ -104,6 +107,15 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                     total
                 })
             }
+        },
+        onDocumentExtractionProgress: (extracted: number, extractTotal: number, currentFile?: string) => {
+            setScanProgress({
+                phase: "extracting",
+                filesFound: extractTotal,
+                extracted,
+                extractTotal,
+                currentPath: currentFile
+            })
         }
     }))
 
@@ -245,11 +257,15 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                             <div className="text-sm font-medium">
                                 {scanProgress.phase === "scanning"
                                     ? "Scanning directory..."
-                                    : "Loading files into memory..."}
+                                    : scanProgress.phase === "extracting"
+                                        ? "Extracting document content..."
+                                        : "Loading files into memory..."}
                             </div>
                             <div className="text-xs text-muted-foreground">
                                 {scanProgress.phase === "scanning" ? (
                                     <>Found {scanProgress.filesFound.toLocaleString()} files</>
+                                ) : scanProgress.phase === "extracting" ? (
+                                    <>Extracted {scanProgress.extracted?.toLocaleString()} of {scanProgress.extractTotal?.toLocaleString()} documents</>
                                 ) : (
                                     <>Loaded {scanProgress.loaded?.toLocaleString()} of {scanProgress.total?.toLocaleString()} files</>
                                 )}
@@ -257,14 +273,19 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                         </div>
                     </div>
 
-                    {scanProgress.phase === "loading" && scanProgress.total && scanProgress.loaded && (
-                        <div className="w-full bg-secondary rounded-full h-2">
-                            <div
-                                className="bg-primary h-2 rounded-full transition-all duration-300"
-                                style={{ width: `${(scanProgress.loaded / scanProgress.total) * 100}%` }}
-                            />
-                        </div>
-                    )}
+                    {((scanProgress.phase === "loading" && scanProgress.total && scanProgress.loaded) ||
+                        (scanProgress.phase === "extracting" && scanProgress.extractTotal && scanProgress.extracted)) && (
+                            <div className="w-full bg-secondary rounded-full h-2">
+                                <div
+                                    className="bg-primary h-2 rounded-full transition-all duration-300"
+                                    style={{
+                                        width: scanProgress.phase === "loading"
+                                            ? `${(scanProgress.loaded! / scanProgress.total!) * 100}%`
+                                            : `${(scanProgress.extracted! / scanProgress.extractTotal!) * 100}%`
+                                    }}
+                                />
+                            </div>
+                        )}
 
                     {scanProgress.currentPath && (
                         <div className="text-xs text-muted-foreground truncate" title={scanProgress.currentPath}>
@@ -478,6 +499,15 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                                             <div className="font-semibold text-green-600">{scanStats.filesLoaded}</div>
                                                             <div className="text-xs text-muted-foreground">files loaded</div>
                                                         </div>
+                                                        {scanStats.documentsExtracted > 0 && (
+                                                            <>
+                                                                <div className="w-px h-8 bg-green-500/20" />
+                                                                <div className="text-center">
+                                                                    <div className="font-semibold text-green-600">{scanStats.documentsExtracted}</div>
+                                                                    <div className="text-xs text-muted-foreground">docs extracted</div>
+                                                                </div>
+                                                            </>
+                                                        )}
                                                         <div className="w-px h-8 bg-green-500/20" />
                                                         <div className="text-center">
                                                             <div className="font-semibold text-green-600">{formatFileSize(scanStats.totalSize)}</div>

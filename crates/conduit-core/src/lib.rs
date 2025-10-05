@@ -205,8 +205,9 @@ pub struct DeleteResponse {
 pub struct ReplaceLinesRequest {
     /// Path of the file to modify
     pub path: PathKey,
-    /// Map of line numbers (1-based) to new content
-    pub replacements: Vec<(usize, String)>,
+    /// List of (start_line, end_line, new_content) replacements
+    /// Lines are 1-based and inclusive
+    pub replacements: Vec<(usize, usize, String)>,
     /// Which buffer to target (typically Staged)
     pub where_: SearchSpace,
 }

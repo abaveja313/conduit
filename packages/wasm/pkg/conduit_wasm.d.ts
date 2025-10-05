@@ -17,7 +17,7 @@ export function begin_file_load(): void;
  * Load a batch of files with content into staging.
  * Arrays must have the same length.
  */
-export function load_file_batch(paths: string[], contents: Array<any>, mtimes: Float64Array): number;
+export function load_file_batch(paths: string[], contents: Array<any>, mtimes: Float64Array, permissions: boolean[]): number;
 /**
  * Commit all staged files to the active index.
  * Returns the number of files committed.
@@ -170,7 +170,7 @@ export interface InitOutput {
   readonly init: () => void;
   readonly ping: () => [number, number];
   readonly begin_file_load: () => [number, number];
-  readonly load_file_batch: (a: number, b: number, c: any, d: number, e: number) => [number, number, number];
+  readonly load_file_batch: (a: number, b: number, c: any, d: number, e: number, f: number, g: number) => [number, number, number];
   readonly commit_file_load: () => [number, number, number];
   readonly abort_file_load: () => [number, number];
   readonly begin_index_staging: () => [number, number];
