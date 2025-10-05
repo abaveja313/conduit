@@ -4,7 +4,7 @@ export const memory: WebAssembly.Memory;
 export const init: () => void;
 export const ping: () => [number, number];
 export const begin_file_load: () => [number, number];
-export const load_file_batch: (a: number, b: number, c: any, d: number, e: number) => [number, number, number];
+export const load_file_batch: (a: number, b: number, c: any, d: number, e: number, f: number, g: number) => [number, number, number];
 export const commit_file_load: () => [number, number, number];
 export const abort_file_load: () => [number, number];
 export const begin_index_staging: () => [number, number];

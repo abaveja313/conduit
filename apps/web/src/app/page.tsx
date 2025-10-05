@@ -117,9 +117,72 @@ function MessageContentRenderer({
                   {toolCall.result !== undefined && (
                     <div className="space-y-1">
                       <div className="font-medium text-muted-foreground">Result:</div>
-                      <pre className="overflow-x-auto bg-background/50 p-2 rounded">
-                        {JSON.stringify(toolCall.result, null, 2)}
-                      </pre>
+                      {/* Special handling for line operation results */}
+                      {(toolCall.toolName === 'replaceLines' || toolCall.toolName === 'deleteLines' || toolCall.toolName === 'insertLines') &&
+                        typeof toolCall.result === 'object' && toolCall.result !== null &&
+                        'linesAdded' in toolCall.result && 'linesReplaced' in toolCall.result ? (
+                        <div className="bg-background/50 p-2 rounded text-xs space-y-1">
+                          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                          <div>Path: {(toolCall.result as any).path}</div>
+                          {(() => {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const result = toolCall.result as any;
+                            const netChange = result.linesAdded;
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                            const originalLines = result.originalLines;
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                            const totalLines = result.totalLines;
+
+                            // For replaceLines with multi-line replacements
+                            if (toolCall.toolName === 'replaceLines' && result.linesReplaced > 0) {
+                              const actualLinesRemoved = result.linesReplaced;
+                              const actualLinesAdded = result.linesReplaced + netChange;
+
+                              return (
+                                <>
+                                  <div>Lines replaced: {result.linesReplaced}</div>
+                                  {actualLinesAdded !== actualLinesRemoved && (
+                                    <>
+                                      <div className="text-green-500">Expanded to: {actualLinesAdded} lines</div>
+                                      <div className="text-red-500">From: {actualLinesRemoved} lines</div>
+                                    </>
+                                  )}
+                                  <div>Net change: {netChange > 0 ? '+' : ''}{netChange} lines</div>
+                                </>
+                              );
+                            }
+
+                            // For deleteLines
+                            if (toolCall.toolName === 'deleteLines') {
+                              return (
+                                <>
+                                  <div className="text-red-500">Lines deleted: {result.linesReplaced}</div>
+                                  <div>Net change: {netChange} lines</div>
+                                </>
+                              );
+                            }
+
+                            // For insertLines
+                            if (toolCall.toolName === 'insertLines') {
+                              return (
+                                <>
+                                  <div className="text-green-500">Lines inserted: {netChange}</div>
+                                  <div>Net change: +{netChange} lines</div>
+                                </>
+                              );
+                            }
+
+                            // Fallback
+                            return <div>Net change: {netChange > 0 ? '+' : ''}{netChange} lines</div>;
+                          })()}
+                          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                          <div>Total lines: {(toolCall.result as any).totalLines}</div>
+                        </div>
+                      ) : (
+                        <pre className="overflow-x-auto bg-background/50 p-2 rounded">
+                          {JSON.stringify(toolCall.result, null, 2)}
+                        </pre>
+                      )}
                     </div>
                   )}
                 </div>
@@ -164,6 +227,7 @@ export default function Home() {
     size: number
     mtime: number
     extension: string
+    editable: boolean
   }>>([])
   const [filesTotal, setFilesTotal] = useState(0)
   const [filesPage, setFilesPage] = useState(0)
@@ -523,7 +587,7 @@ export default function Home() {
           </div>
           <div className="font-mono text-sm">
             {region.removedLines.map((line, i) => (
-              <div key={`del-${i}`} className="flex bg-red-500/10 border-l-4 border-red-500">
+              <div key={`del-${i}`} className="flex bg-red-500/10 border-l-4 border-red-500 min-w-fit">
                 <span className="text-red-600 w-8 sm:w-12 text-right pr-1 sm:pr-2 select-none flex-shrink-0 text-[10px] sm:text-xs py-1">
                   {region.originalStart + i}
                 </span>
@@ -547,7 +611,7 @@ export default function Home() {
           </div>
           <div className="font-mono text-sm">
             {region.addedLines.map((line, i) => (
-              <div key={`add-${i}`} className="flex bg-green-500/10 border-l-4 border-green-500">
+              <div key={`add-${i}`} className="flex bg-green-500/10 border-l-4 border-green-500 min-w-fit">
                 <span className="w-8 sm:w-12 text-center select-none flex-shrink-0 text-[10px] sm:text-xs py-1"></span>
                 <span className="text-green-600 w-8 sm:w-12 text-right pr-1 sm:pr-2 select-none flex-shrink-0 text-[10px] sm:text-xs py-1">
                   {region.modifiedStart + i}
@@ -589,7 +653,7 @@ export default function Home() {
       // Add removed lines
       region.removedLines.forEach((line, i) => {
         allLines.push(
-          <div key={`del-${lineKey++}`} className="flex hover:bg-red-500/20 transition-colors">
+          <div key={`del-${lineKey++}`} className="flex hover:bg-red-500/20 transition-colors min-w-fit">
             <span className="text-red-600 w-8 sm:w-12 text-right pr-1 sm:pr-2 select-none flex-shrink-0 text-[10px] sm:text-xs py-1 border-r border-red-500/20">
               {region.originalStart + i}
             </span>
@@ -603,7 +667,7 @@ export default function Home() {
       // Add added lines
       region.addedLines.forEach((line, i) => {
         allLines.push(
-          <div key={`add-${lineKey++}`} className="flex hover:bg-green-500/20 transition-colors">
+          <div key={`add-${lineKey++}`} className="flex hover:bg-green-500/20 transition-colors min-w-fit">
             <span className="w-8 sm:w-12 text-center select-none flex-shrink-0 text-[10px] sm:text-xs py-1 border-r border-border"></span>
             <span className="text-green-600 w-8 sm:w-12 text-right pr-1 sm:pr-2 select-none flex-shrink-0 text-[10px] sm:text-xs py-1 border-r border-green-500/20">
               {region.modifiedStart + i}
@@ -925,6 +989,11 @@ export default function Home() {
                                   <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                                   <span className="text-sm font-mono truncate flex-1 min-w-0">{file.path}</span>
                                   <div className="flex items-center gap-2 flex-shrink-0">
+                                    {!file.editable && (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 font-medium">
+                                        Read-only
+                                      </span>
+                                    )}
                                     {file.extension && (
                                       <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
                                         {file.extension}
@@ -1073,7 +1142,7 @@ export default function Home() {
                 )}
               </div>
               <div className="text-muted-foreground">
-                ♥ made by amrit in stanford, ca
+                🎄 made by <a href='https://github.com/abaveja313' target="_blank"><u>amrit</u></a> in stanford, ca
               </div>
             </div>
           )}

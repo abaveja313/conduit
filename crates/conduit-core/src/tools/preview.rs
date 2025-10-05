@@ -23,17 +23,25 @@ pub struct PreviewHunk {
 pub struct PreviewBuilder {
     /// Number of context lines before/after the match.
     pub delta: usize,
+    /// Maximum characters to show before/after match in same line (None = unlimited)
+    pub char_limit: Option<usize>,
 }
 
 impl Default for PreviewBuilder {
     fn default() -> Self {
-        Self { delta: 2 }
+        Self {
+            delta: 2,
+            char_limit: Some(1250),
+        }
     }
 }
 
 impl PreviewBuilder {
     pub fn new(delta: usize) -> Self {
-        Self { delta }
+        Self {
+            delta,
+            char_limit: Some(1000),
+        }
     }
 
     /// Build a preview excerpt for a match.
@@ -45,6 +53,7 @@ impl PreviewBuilder {
         path: PathKey,
         line_index: &LineIndex,
         bytes: &[u8],
+        match_span: &crate::tools::model::ByteSpan,
         match_start_line: usize,
         match_end_line: usize,
     ) -> Result<PreviewHunk> {
@@ -55,14 +64,31 @@ impl PreviewBuilder {
             .span_of_lines(p_start, p_end)
             .ok_or(Error::InvalidRange(p_start, p_end))?;
 
+        let final_range = if let Some(limit) = self.char_limit {
+            let start = match_span.start.saturating_sub(limit).max(byte_range.start);
+            let end = (match_span.end + limit).min(byte_range.end);
+
+            crate::tools::model::ByteSpan { start, end }
+        } else {
+            byte_range
+        };
+
+        // Adjust line numbers to match the truncated byte range
+        let actual_start_line = line_index
+            .line_of_byte(final_range.start)
+            .unwrap_or(p_start);
+        let actual_end_line = line_index
+            .line_of_byte(final_range.end.saturating_sub(1))
+            .unwrap_or(p_end);
+
         // Extract and convert to UTF-8 (lossy for non-UTF-8 files)
-        let excerpt_bytes = &bytes[byte_range.to_range()];
+        let excerpt_bytes = &bytes[final_range.to_range()];
         let excerpt = String::from_utf8_lossy(excerpt_bytes).into_owned();
 
         Ok(PreviewHunk {
             path,
-            preview_start_line: p_start,
-            preview_end_line: p_end,
+            preview_start_line: actual_start_line,
+            preview_end_line: actual_end_line,
             matched_line_ranges: vec![(match_start_line, match_end_line)],
             excerpt,
         })

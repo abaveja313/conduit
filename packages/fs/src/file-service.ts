@@ -44,10 +44,19 @@ export const searchFilesSchema = z.object({
 
 export const replaceLinesSchema = z.object({
     path: z.string().describe('File path to modify'),
-    replacements: z.array(z.tuple([
-        z.number().int().positive().describe('Line number (1-based)'),
-        z.string().describe('New content for the line')
-    ])).describe('Array of [lineNumber, newContent] pairs'),
+    replacements: z.array(z.union([
+        // Legacy format: [lineNumber, newContent]
+        z.tuple([
+            z.number().int().positive().describe('Line number (1-based)'),
+            z.string().describe('New content for the line')
+        ]),
+        // New format: [startLine, endLine, newContent]
+        z.tuple([
+            z.number().int().positive().describe('Start line number (1-based, inclusive)'),
+            z.number().int().positive().describe('End line number (1-based, inclusive)'),
+            z.string().describe('New content for the line range')
+        ])
+    ])).describe('Array of [lineNumber, newContent] or [startLine, endLine, newContent]'),
     useStaged: z.boolean().default(true).describe('If true, modify staged index; otherwise modify active index')
 });
 
@@ -211,6 +220,7 @@ export class FileService {
             size: number;
             mtime: number;
             extension: string;
+            editable: boolean;
         }>;
         total: number;
         hasMore: boolean;
@@ -613,7 +623,7 @@ export class FileService {
     getTools() {
         return {
             readFile: {
-                description: 'Read specific lines from a file in the STAGED WASM index (not from disk). Returns an object with path, array of lines (format: [{lineNum: "content"}, ...]), and totalLines. The staged index contains your working changes that haven\'t been committed yet. The file must be loaded into WASM memory first. For files under 500 lines, read the entire file at once. For larger files, read in chunks of 200-300 lines.',
+                description: 'Read specific lines from a file in the STAGED WASM index (not from disk). Returns an object with path, array of lines (format: [{lineNum: "content"}, ...]), and totalLines. The staged index contains your working changes that haven\'t been committed yet. The file must be loaded into WASM memory first. For files under 500 lines, read the entire file at once. For larger files, read in chunks of 200-300 lines. NOTE: Can read .pdf and .docx files (automatically converted to text/HTML) but these files are READ-ONLY and cannot be edited.',
                 parameters: readFileSchema,
                 execute: async (params: ReadFileParams) => {
                     return this.readFile(params);
@@ -657,21 +667,21 @@ export class FileService {
                 }
             },
             replaceLines: {
-                description: 'Replace specific lines in a file by line number in the STAGED index. Provide [lineNumber, newContent] pairs (1-based line numbers). Supports multi-line replacements - if newContent contains newlines, it will expand into multiple lines. Returns linesReplaced, linesAdded (can be negative if shrinking), totalLines, and originalLines. Changes are held in memory only until committed.',
+                description: 'Replace specific lines or line ranges in a file in the STAGED index. Provide either [lineNumber, newContent] for single line replacement or [startLine, endLine, newContent] for range replacement (1-based line numbers, inclusive). When replacing a range, all lines from startLine to endLine are replaced with the new content. Supports multi-line content - newlines in content create multiple lines. Returns linesReplaced, linesAdded (can be negative if shrinking), totalLines, and originalLines. Changes are held in memory only until committed. Cannot be used on PDF or DOCX files (they are read-only).',
                 parameters: replaceLinesSchema,
                 execute: async (params: ReplaceLinesParams) => {
                     return this.replaceLines(params);
                 }
             },
             deleteLines: {
-                description: 'Delete specific lines from a file in the STAGED index. Provide an array of line numbers to delete (1-based). The file will shrink by the number of deleted lines. Returns modification stats including linesAdded (negative for deletions). Changes are held in memory only until committed.',
+                description: 'Delete specific lines from a file in the STAGED index. Provide an array of line numbers to delete (1-based). The file will shrink by the number of deleted lines. Returns modification stats including linesAdded (negative for deletions). Changes are held in memory only until committed. Cannot be used on PDF or DOCX files (they are read-only).',
                 parameters: deleteLinesSchema,
                 execute: async (params: DeleteLinesParams) => {
                     return this.deleteLines(params);
                 }
             },
             insertLines: {
-                description: 'Insert new content before or after a specific line in the STAGED index. Content can be multi-line. Specify position as "before" or "after". The file will expand by the number of new lines. Returns modification stats. Changes are held in memory only until committed.',
+                description: 'Insert new content before or after a specific line in the STAGED index. Content can be multi-line. Specify position as "before" or "after". The file will expand by the number of new lines. Returns modification stats. Changes are held in memory only until committed. Cannot be used on PDF or DOCX files (they are read-only).',
                 parameters: insertLinesSchema,
                 execute: async (params: InsertLinesParams) => {
                     return this.insertLines(params);

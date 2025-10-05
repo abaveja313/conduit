@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::error::{Error, Result};
 use crate::fs::PathKey;
 
 /// File metadata with optional content.
@@ -16,6 +17,7 @@ pub struct FileEntry {
     size: u64,
     mtime: i64, // unix epoch
     bytes: Option<Arc<[u8]>>,
+    editable: bool,
 }
 
 /// Path-indexed file collection with efficient prefix queries.
@@ -40,19 +42,20 @@ impl FileEntry {
     }
 
     /// Create metadata-only entry.
-    pub fn new(ext: impl Into<String>, size: u64, mtime: i64) -> Self {
+    pub fn new(ext: impl Into<String>, size: u64, mtime: i64, editable: bool) -> Self {
         Self {
             ext: ext.into(),
             mime_type: None,
             size,
             mtime,
             bytes: None,
+            editable,
         }
     }
 
     /// Create metadata-only entry from a path.
-    pub fn new_from_path(path: &PathKey, size: u64, mtime: i64) -> Self {
-        Self::new(Self::get_extension(path.as_str()), size, mtime)
+    pub fn new_from_path(path: &PathKey, size: u64, mtime: i64, editable: bool) -> Self {
+        Self::new(Self::get_extension(path.as_str()), size, mtime, editable)
     }
 
     /// Create metadata-only entry with MIME type.
@@ -61,6 +64,7 @@ impl FileEntry {
         mime_type: impl Into<String>,
         size: u64,
         mtime: i64,
+        editable: bool,
     ) -> Self {
         Self {
             ext: ext.into(),
@@ -68,11 +72,17 @@ impl FileEntry {
             size,
             mtime,
             bytes: None,
+            editable,
         }
     }
 
     /// Create entry with content.
-    pub fn from_bytes(ext: impl Into<String>, mtime: i64, bytes: Arc<[u8]>) -> Self {
+    pub fn from_bytes(
+        ext: impl Into<String>,
+        mtime: i64,
+        bytes: Arc<[u8]>,
+        editable: bool,
+    ) -> Self {
         let size = bytes.len() as u64;
         Self {
             ext: ext.into(),
@@ -80,12 +90,18 @@ impl FileEntry {
             size,
             mtime,
             bytes: Some(bytes),
+            editable,
         }
     }
 
     /// Create entry with content from a path.
-    pub fn from_bytes_and_path(path: &PathKey, mtime: i64, bytes: Arc<[u8]>) -> Self {
-        Self::from_bytes(Self::get_extension(path.as_str()), mtime, bytes)
+    pub fn from_bytes_and_path(
+        path: &PathKey,
+        mtime: i64,
+        bytes: Arc<[u8]>,
+        editable: bool,
+    ) -> Self {
+        Self::from_bytes(Self::get_extension(path.as_str()), mtime, bytes, editable)
     }
 
     /// Create entry with content and MIME type.
@@ -94,6 +110,7 @@ impl FileEntry {
         mime_type: Option<String>,
         mtime: i64,
         bytes: Arc<[u8]>,
+        editable: bool,
     ) -> Self {
         let size = bytes.len() as u64;
         Self {
@@ -102,6 +119,7 @@ impl FileEntry {
             size,
             mtime,
             bytes: Some(bytes),
+            editable,
         }
     }
 
@@ -143,6 +161,10 @@ impl FileEntry {
     pub fn mtime(&self) -> i64 {
         self.mtime
     }
+
+    pub fn is_editable(&self) -> bool {
+        self.editable
+    }
 }
 
 impl Index {
@@ -151,22 +173,37 @@ impl Index {
         self.files.get(key)
     }
 
+    pub fn can_edit_file(&self, key: &PathKey) -> bool {
+        if let Some(e) = self.files.get(key) {
+            return e.is_editable();
+        }
+        true
+    }
+
     /// Insert or update file.
-    pub fn upsert_file(&mut self, key: PathKey, entry: FileEntry) {
+    pub fn upsert_file(&mut self, key: PathKey, entry: FileEntry) -> Result<()> {
+        // Only check editability if the file already exists
+        if self.files.contains_key(&key) && !self.can_edit_file(&key) {
+            return Err(Error::ReadOnlyFile(key.into()));
+        }
         // im::HashMap::insert mutates self and returns the old value
         let _old = self.files.insert(key.clone(), entry);
         // im::OrdSet::insert mutates self and returns whether it was newly inserted
         let _ = self.prefixes.insert(key);
+        Ok(())
     }
 
     /// Remove file. Returns whether it existed.
-    pub fn remove_file(&mut self, key: &PathKey) -> bool {
-        // returns Option<FileEntry>
+    pub fn remove_file(&mut self, key: &PathKey) -> Result<bool> {
+        if !self.can_edit_file(key) {
+            return Err(Error::ReadOnlyFile(key.clone().into()));
+        }
+
         let existed = self.files.remove(key).is_some();
         if existed {
             let _ = self.prefixes.remove(key);
         }
-        existed
+        Ok(existed)
     }
 
     /// All paths with given prefix.

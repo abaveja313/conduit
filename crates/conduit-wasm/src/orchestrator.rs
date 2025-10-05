@@ -22,14 +22,6 @@ impl Orchestrator {
         }
     }
 
-    /// Helper to track line statistics after modifications
-    fn track_line_stats(&self, path: &PathKey, delta: isize, current_lines: usize) -> Result<()> {
-        let lines_added = delta.max(0);
-        let lines_removed = (-delta).max(0);
-        self.index_manager
-            .update_line_stats(path, lines_added, lines_removed, current_lines)
-    }
-
     pub fn handle_find(&self, req: FindRequest, abort: &AbortFlag) -> Result<FindResponse> {
         abort.reset();
 
@@ -81,6 +73,7 @@ impl Orchestrator {
                     path.clone(),
                     &line_index,
                     content,
+                    &span,
                     line_start,
                     line_end,
                 ) {
@@ -125,7 +118,7 @@ impl Orchestrator {
 
         let entry = index
             .get_file(path)
-            .ok_or_else(|| Error::InvalidPath(format!("File not found: {}", path.as_str())))?;
+            .ok_or_else(|| Error::FileNotFound(path.as_str().to_string()))?;
 
         let content = entry.bytes().ok_or_else(|| {
             Error::MissingContent(format!("File has no content: {}", path.as_str()))
@@ -144,8 +137,10 @@ impl Orchestrator {
         let current_time = current_unix_timestamp();
 
         let entry = match req.content {
-            Some(bytes) => FileEntry::from_bytes_and_path(&req.path, current_time, bytes.into()),
-            None => FileEntry::new_from_path(&req.path, 0, current_time),
+            Some(bytes) => {
+                FileEntry::from_bytes_and_path(&req.path, current_time, bytes.into(), true)
+            }
+            None => FileEntry::new_from_path(&req.path, 0, current_time, true),
         };
 
         let size = entry.size();
@@ -162,13 +157,18 @@ impl Orchestrator {
         // Track line stats for created or overwritten files
         if !exists {
             // New file - all lines are added
-            self.track_line_stats(&req.path, line_count as isize, line_count)?;
+            self.index_manager
+                .update_line_stats(&req.path, line_count as isize, 0, line_count)?;
         } else {
             // Overwriting existing file - need to calculate the delta
             if let Ok(active_content) = self.get_file_content(&req.path, SearchSpace::Active) {
                 let original_lines = active_content.lines().count();
-                let delta = (line_count as isize) - (original_lines as isize);
-                self.track_line_stats(&req.path, delta, line_count)?;
+                self.index_manager.update_line_stats(
+                    &req.path,
+                    line_count as isize,
+                    original_lines as isize,
+                    line_count,
+                )?;
             }
         }
 
@@ -214,7 +214,7 @@ impl Orchestrator {
         let current_time = current_unix_timestamp();
         let modified_bytes = content.into_bytes();
         let modified_entry =
-            FileEntry::from_bytes_and_path(path, current_time, modified_bytes.into());
+            FileEntry::from_bytes_and_path(path, current_time, modified_bytes.into(), true);
         self.index_manager.stage_file(path.clone(), modified_entry)
     }
 
@@ -228,23 +228,37 @@ impl Orchestrator {
         let content = self.get_file_content(&req.path, req.where_)?;
         let original_lines = content.lines().count();
 
-        let operations: Vec<(usize, LineOperation)> = req
+        // Convert replacements to LineOperation::ReplaceRange
+        let operations: Vec<LineOperation> = req
             .replacements
             .into_iter()
-            .map(|(line_num, content)| (line_num, LineOperation::Replace(content)))
+            .map(
+                |(start_line, end_line, content)| LineOperation::ReplaceRange {
+                    start: start_line,
+                    end: end_line,
+                    content,
+                },
+            )
             .collect();
 
-        let (modified_content, lines_replaced, total_delta) =
+        let (modified_content, lines_added, lines_removed) =
             apply_line_operations(&content, operations);
         let total_lines = modified_content.lines().count();
 
         self.stage_file_with_content(&req.path, modified_content)?;
-        self.track_line_stats(&req.path, total_delta, total_lines)?;
+
+        // Update line stats with actual lines added and removed
+        self.index_manager.update_line_stats(
+            &req.path,
+            lines_added as isize,
+            lines_removed as isize,
+            total_lines,
+        )?;
 
         Ok(ReplaceLinesResponse {
             path: req.path,
-            lines_replaced,
-            lines_added: total_delta,
+            lines_replaced: lines_removed, // Report actual lines replaced
+            lines_added: lines_added as isize - lines_removed as isize, // Net change for backward compatibility
             total_lines,
             original_lines,
         })
@@ -260,23 +274,45 @@ impl Orchestrator {
         let content = self.get_file_content(&req.path, req.where_)?;
         let original_lines = content.lines().count();
 
-        let operations: Vec<(usize, LineOperation)> = req
-            .line_numbers
-            .into_iter()
-            .map(|line_num| (line_num, LineOperation::Delete))
-            .collect();
+        // Convert line deletions to DeleteRange operations
+        // Group consecutive lines into ranges for efficiency
+        let mut operations: Vec<LineOperation> = Vec::new();
+        let mut sorted_lines = req.line_numbers;
+        sorted_lines.sort();
 
-        let (modified_content, lines_replaced, total_delta) =
+        let mut i = 0;
+        while i < sorted_lines.len() {
+            let start = sorted_lines[i];
+            let mut end = start;
+
+            // Find consecutive lines
+            while i + 1 < sorted_lines.len() && sorted_lines[i + 1] == end + 1 {
+                i += 1;
+                end = sorted_lines[i];
+            }
+
+            operations.push(LineOperation::DeleteRange { start, end });
+            i += 1;
+        }
+
+        let (modified_content, lines_added, lines_removed) =
             apply_line_operations(&content, operations);
         let total_lines = modified_content.lines().count();
 
         self.stage_file_with_content(&req.path, modified_content)?;
-        self.track_line_stats(&req.path, total_delta, total_lines)?;
+
+        // Update line stats with actual lines added and removed
+        self.index_manager.update_line_stats(
+            &req.path,
+            lines_added as isize,
+            lines_removed as isize,
+            total_lines,
+        )?;
 
         Ok(ReplaceLinesResponse {
             path: req.path,
-            lines_replaced,
-            lines_added: total_delta,
+            lines_replaced: lines_removed, // Report actual lines removed
+            lines_added: -(lines_removed as isize), // Negative for deletions
             total_lines,
             original_lines,
         })
@@ -293,22 +329,35 @@ impl Orchestrator {
         let original_lines = content.lines().count();
 
         let operation = match req.position {
-            InsertPosition::Before => LineOperation::InsertBefore(req.content),
-            InsertPosition::After => LineOperation::InsertAfter(req.content),
+            InsertPosition::Before => LineOperation::InsertBefore {
+                line: req.line_number,
+                content: req.content,
+            },
+            InsertPosition::After => LineOperation::InsertAfter {
+                line: req.line_number,
+                content: req.content,
+            },
         };
 
-        let operations = vec![(req.line_number, operation)];
-        let (modified_content, lines_replaced, total_delta) =
+        let operations = vec![operation];
+        let (modified_content, lines_added, lines_removed) =
             apply_line_operations(&content, operations);
         let total_lines = modified_content.lines().count();
 
         self.stage_file_with_content(&req.path, modified_content)?;
-        self.track_line_stats(&req.path, total_delta, total_lines)?;
+
+        // Update line stats with actual lines added and removed
+        self.index_manager.update_line_stats(
+            &req.path,
+            lines_added as isize,
+            lines_removed as isize,
+            total_lines,
+        )?;
 
         Ok(ReplaceLinesResponse {
             path: req.path,
-            lines_replaced,
-            lines_added: total_delta,
+            lines_replaced: 0,                 // No lines replaced for insertions
+            lines_added: lines_added as isize, // Actual lines added
             total_lines,
             original_lines,
         })
@@ -377,8 +426,17 @@ impl DiffTool for Orchestrator {
 
         let mut summaries = Vec::new();
 
+        // Convert deletions to a HashSet for O(1) lookup
+        let deletion_set: std::collections::HashSet<_> = deletions.iter().cloned().collect();
+
         // Process files with change stats (modified or created files)
+        // Skip files that are in the deletion set to avoid duplicates
         for (path, stats) in change_stats {
+            // Skip if this file is deleted (will be handled in deletions loop)
+            if deletion_set.contains(&path) {
+                continue;
+            }
+
             let status = if active_index.get_file(&path).is_none() {
                 FileChangeStatus::Created
             } else {

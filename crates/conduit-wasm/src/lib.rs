@@ -6,7 +6,7 @@ use conduit_core::{
     DeleteTool, SearchSpace,
 };
 use globset::Glob;
-use js_sys::{Date, Uint8Array};
+use js_sys::{Boolean, Date, Uint8Array};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -86,15 +86,17 @@ pub fn load_file_batch(
     paths: Vec<String>,
     contents: js_sys::Array, // Array of Uint8Arrays
     mtimes: Vec<f64>,        // JS timestamps are always f64
+    permissions: Vec<Boolean>,
 ) -> Result<usize, JsValue> {
     let len = paths.len();
     let contents_len = contents.length() as usize;
-    if contents_len != len || mtimes.len() != len {
+    if contents_len != len || mtimes.len() != len || permissions.len() != len {
         return Err(js_err!(
-            "Array length mismatch: paths={}, contents={}, mtimes={}",
+            "Array length mismatch: paths={}, contents={}, mtimes={}, permissions={}",
             paths.len(),
             contents_len,
-            mtimes.len()
+            mtimes.len(),
+            permissions.len()
         ));
     }
 
@@ -121,6 +123,11 @@ pub fn load_file_batch(
             ));
         }
 
+        let editable: bool = permissions
+            .get(i)
+            .and_then(|o| o.as_bool())
+            .unwrap_or(false);
+
         let mtime_secs = (mtimes[i] / 1000.0) as i64;
 
         let uint8_array = Uint8Array::from(contents.get(i as u32));
@@ -129,7 +136,7 @@ pub fn load_file_batch(
         let content_arc: Arc<[u8]> = content_vec.into();
 
         let ext = FileEntry::get_extension(path_key.as_str());
-        let entry = FileEntry::from_bytes(ext, mtime_secs, content_arc);
+        let entry = FileEntry::from_bytes(ext, mtime_secs, content_arc, editable);
 
         entries.push((path_key, entry));
     }
@@ -580,6 +587,7 @@ pub fn list_files(
             .set("size", JsValue::from_f64(entry.size() as f64))?
             .set("mtime", JsValue::from_f64(entry.mtime() as f64))?
             .set("extension", JsValue::from_str(entry.ext()))?
+            .set("editable", JsValue::from_bool(entry.is_editable()))?
             .build();
         files_array.push(&file_obj);
         count += 1;
@@ -718,12 +726,13 @@ pub fn replace_lines(
 
     let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
 
-    // Convert JavaScript array to Vec<(usize, String)>
+    // Convert JavaScript array to Vec<(usize, usize, String)>
     let mut line_replacements = Vec::new();
     for i in 0..replacements.length() {
         let pair = replacements.get(i);
         if let Some(array) = pair.dyn_ref::<js_sys::Array>() {
-            if array.length() >= 2 {
+            if array.length() == 2 {
+                // Old format: [lineNumber, content] - treat as single line replacement
                 let line_num = array
                     .get(0)
                     .as_f64()
@@ -737,12 +746,38 @@ pub fn replace_lines(
                     return Err(js_err!("Line numbers must be 1-based (got {})", line_num));
                 }
 
-                line_replacements.push((line_num as usize, content));
+                // Convert to range format (single line)
+                line_replacements.push((line_num as usize, line_num as usize, content));
+            } else if array.length() == 3 {
+                // New format: [startLine, endLine, content]
+                let start_line = array
+                    .get(0)
+                    .as_f64()
+                    .ok_or_else(|| js_err!("Start line must be a number"))?;
+                let end_line = array
+                    .get(1)
+                    .as_f64()
+                    .ok_or_else(|| js_err!("End line must be a number"))?;
+                let content = array
+                    .get(2)
+                    .as_string()
+                    .ok_or_else(|| js_err!("Line content must be a string"))?;
+
+                if start_line < 1.0 || end_line < 1.0 {
+                    return Err(js_err!("Line numbers must be 1-based"));
+                }
+                if start_line > end_line {
+                    return Err(js_err!("Start line must be <= end line"));
+                }
+
+                line_replacements.push((start_line as usize, end_line as usize, content));
+            } else {
+                return Err(js_err!(
+                    "Each replacement must be [lineNumber, content] or [startLine, endLine, content]"
+                ));
             }
         } else {
-            return Err(js_err!(
-                "Each replacement must be a [lineNumber, content] array"
-            ));
+            return Err(js_err!("Each replacement must be an array"));
         }
     }
 

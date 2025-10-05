@@ -7,6 +7,7 @@
 // Main exports
 export { FileScanner } from './scanner.js';
 export { FileManager } from './file-manager.js';
+export { DocumentExtractor } from './document-extractor.js';
 export {
   FileService,
   fileService,
