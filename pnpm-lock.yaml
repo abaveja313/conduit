@@ -115,6 +115,9 @@ importers:
       mammoth:
         specifier: ^1.11.0
         version: 1.11.0
+      mixpanel:
+        specifier: ^0.18.1
+        version: 0.18.1
       mixpanel-browser:
         specifier: ^2.70.0
         version: 2.70.0
@@ -2794,6 +2797,13 @@ packages:
     engines: { node: '>=0.4.0' }
     hasBin: true
 
+  agent-base@6.0.2:
+    resolution:
+      {
+        integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==,
+      }
+    engines: { node: '>= 6.0.0' }
+
   ai@5.0.59:
     resolution:
       {
@@ -4153,6 +4163,13 @@ packages:
         integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==,
       }
 
+  https-proxy-agent@5.0.0:
+    resolution:
+      {
+        integrity: sha512-EkYm5BcKUGiduxzSt3Eppko+PiNWNEpa4ySk9vTC6wDsQJW9rHSa+UhGNJoRYp7bz6Ht1eaRIa6QaJqO5rCFbA==,
+      }
+    engines: { node: '>= 6' }
+
   husky@9.1.7:
     resolution:
       {
@@ -4980,6 +4997,13 @@ packages:
       {
         integrity: sha512-iXSD6t9iNTHd1cHbBlP4LrJACgAKfFrssttGKAy4sNu+BodVccTlJQJeBxINZUBsP/WbWMFSuDo2xHRUr3OG/A==,
       }
+
+  mixpanel@0.18.1:
+    resolution:
+      {
+        integrity: sha512-YD1xfn6WP6ZLQ6Pmgh0KgdXhueJEsrodThMTsHzHMH0VbWa9ck8s+ynDtM83OSgt+yQ61W/SQNrH8Y4wIwocGg==,
+      }
+    engines: { node: '>=10.0' }
 
   mkdirp@3.0.1:
     resolution:
@@ -8000,6 +8024,12 @@ snapshots:
 
   acorn@8.15.0: {}
 
+  agent-base@6.0.2:
+    dependencies:
+      debug: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
+
   ai@5.0.59(zod@3.25.76):
     dependencies:
       '@ai-sdk/gateway': 1.0.32(zod@3.25.76)
@@ -8970,6 +9000,13 @@ snapshots:
 
   html-escaper@2.0.2: {}
 
+  https-proxy-agent@5.0.0:
+    dependencies:
+      agent-base: 6.0.2
+      debug: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
+
   husky@9.1.7: {}
 
   ignore@5.3.2: {}
@@ -9420,6 +9457,12 @@ snapshots:
   mixpanel-browser@2.70.0:
     dependencies:
       '@mixpanel/rrweb': 2.0.0-alpha.18.1
+
+  mixpanel@0.18.1:
+    dependencies:
+      https-proxy-agent: 5.0.0
+    transitivePeerDependencies:
+      - supports-color
 
   mkdirp@3.0.1: {}
 

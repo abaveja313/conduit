@@ -1,44 +1,66 @@
 "use client"
 
 import { useEffect } from "react"
-import mixpanel from "mixpanel-browser"
+import { usePathname } from "next/navigation"
 
 const MIXPANEL_ENABLED = !!process.env.NEXT_PUBLIC_MIXPANEL_TOKEN
 
 export function MixpanelProvider() {
-    useEffect(() => {
-        if (!MIXPANEL_ENABLED) {
-            console.log('Mixpanel disabled - no token provided')
-            return
-        }
+    const pathname = usePathname()
 
-        mixpanel.init(process.env.NEXT_PUBLIC_MIXPANEL_TOKEN!, {
-            debug: process.env.NODE_ENV === 'development',
-            track_pageview: true,
-            persistence: 'localStorage',
-            api_host: process.env.NEXT_PUBLIC_MIXPANEL_API_HOST || 'https://api.mixpanel.com',
-            ignore_dnt: process.env.NEXT_PUBLIC_IGNORE_DNT?.toLowerCase() == "true"
+    useEffect(() => {
+        if (!MIXPANEL_ENABLED) return
+
+        // Track pageview on mount and route changes
+        mixpanelWrapper.track('Page View', {
+            path: pathname,
+            url: window.location.href,
+            referrer: document.referrer
         })
-    }, [])
+    }, [pathname])
 
     return null
 }
 
+let currentDistinctId: string | null = null
+
 const mixpanelWrapper = {
-    track: (event: string, properties?: Record<string, unknown>) => {
-        if (MIXPANEL_ENABLED) {
-            mixpanel.track(event, properties)
+    track: async (event: string, properties?: Record<string, unknown>) => {
+        if (!MIXPANEL_ENABLED) return
+
+        try {
+            await fetch('/api/event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    event,
+                    properties,
+                    distinctId: currentDistinctId
+                })
+            })
+        } catch (error) {
+            console.error('Failed to track event:', error)
         }
     },
-    identify: (id: string) => {
-        if (MIXPANEL_ENABLED) {
-            mixpanel.identify(id)
-        }
+    identify: async (id: string) => {
+        if (!MIXPANEL_ENABLED) return
+        currentDistinctId = id
     },
     people: {
-        set: (properties: Record<string, unknown>) => {
-            if (MIXPANEL_ENABLED) {
-                mixpanel.people.set(properties)
+        set: async (properties: Record<string, unknown>) => {
+            if (!MIXPANEL_ENABLED) return
+
+            try {
+                await fetch('/api/event', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        distinctId: currentDistinctId,
+                        peopleSet: properties
+                    })
+                })
+            } catch (error) {
+                console.error('Failed to set people properties:', error)
             }
         }
     }
