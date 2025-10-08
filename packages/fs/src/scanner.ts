@@ -15,14 +15,14 @@ export class FileScanner {
   private readonly defaultOptions: Required<Omit<ScanOptions, 'fileFilter'>> & {
     fileFilter?: ScanOptions['fileFilter'];
   } = {
-    exclude: [],
-    maxDepth: Infinity,
-    includeHidden: false,
-    maxFileSize: Infinity,
-    concurrency: 3,
-    signal: new AbortController().signal,
-    fileFilter: undefined,
-  };
+      exclude: [],
+      maxDepth: Infinity,
+      includeHidden: false,
+      maxFileSize: Infinity,
+      concurrency: 3,
+      signal: new AbortController().signal,
+      fileFilter: undefined,
+    };
 
   constructor() {
     this.emitter = mitt<ScannerEvents>();
@@ -105,7 +105,6 @@ export class FileScanner {
       return;
     }
 
-    // For root directory, use empty path; for subdirectories, use the parentPath as-is
     const dirPath = parentPath;
 
     for await (const [name, handle] of dirHandle.entries()) {
@@ -135,7 +134,6 @@ export class FileScanner {
             continue;
           }
 
-          // Apply optional file filter
           if (opts.fileFilter && !opts.fileFilter(file, entryPath)) {
             logger.debug('File filtered out', { path: entryPath });
             continue;
@@ -150,7 +148,6 @@ export class FileScanner {
             handle: handle,
           };
         } else if (isDirectoryHandle(handle)) {
-          // Only yield directory metadata if we're going to scan into it
           if (depth < opts.maxDepth) {
             metadata = {
               path: entryPath,
@@ -162,7 +159,6 @@ export class FileScanner {
             };
           }
 
-          // Recursively scan subdirectories
           if (depth < opts.maxDepth) {
             yield* this.scanSequential(
               handle,
@@ -190,12 +186,10 @@ export class FileScanner {
         continue;
       }
 
-      // Yield metadata and emit events if we have metadata
       if (metadata) {
         state.processedCount++;
         yield metadata;
 
-        // Emit events - these can throw but shouldn't stop scanning
         try {
           this.emitter.emit('file', metadata);
           this.emitter.emit('progress', {
@@ -203,13 +197,11 @@ export class FileScanner {
             currentPath: entryPath,
           });
         } catch (eventError) {
-          // Log event listener errors but continue scanning
           logger.error('Error in event listener', eventError);
         }
       }
     }
 
-    // Emit complete event when done with root
     if (depth === 0) {
       this.emitter.emit('complete', {
         processed: state.processedCount,
@@ -227,7 +219,6 @@ export class FileScanner {
     shouldExclude: (path: string) => boolean,
     startTime: number,
   ): AsyncGenerator<FileMetadata> {
-    // Queue of directories to process
     const queue: Array<{ handle: FileSystemDirectoryHandle; path: string; depth: number }> = [
       { handle: rootHandle, path: '', depth: 0 },
     ];
@@ -252,12 +243,10 @@ export class FileScanner {
         try {
           if (isFileHandle(handle)) {
             const file = await handle.getFile();
-            // Check if file size exceeds max (skip if too large)
             if (opts.maxFileSize !== Infinity && file.size > opts.maxFileSize) {
               continue;
             }
 
-            // Apply optional file filter
             if (opts.fileFilter && !opts.fileFilter(file, entryPath)) {
               continue;
             }
@@ -268,7 +257,7 @@ export class FileScanner {
               size: file.size,
               type: 'file',
               lastModified: file.lastModified,
-              handle, // Make sure to include the handle
+              handle,
             };
 
             results.push(metadata);
@@ -307,7 +296,6 @@ export class FileScanner {
       }
     };
 
-    // Process directories with concurrency limit
     while (queue.length > 0 || processing.size > 0) {
       if (opts.signal?.aborted) {
         throw new DOMException('Scan aborted', 'AbortError');
@@ -335,17 +323,14 @@ export class FileScanner {
         processing.add(promise);
       }
 
-      // Wait for at least one to complete
       if (processing.size > 0) {
         await Promise.race(processing);
       }
 
-      // Check abort again before yielding results
       if (opts.signal?.aborted) {
         throw new DOMException('Scan aborted', 'AbortError');
       }
 
-      // Yield accumulated results
       while (results.length > 0) {
         yield results.shift()!;
       }

@@ -40,7 +40,6 @@ export class FileManager {
   private handles = new Map<string, FileSystemFileHandle>();
   private rootDirectoryHandle?: FileSystemDirectoryHandle;
   private limit: ReturnType<typeof pLimit>;
-  // Store extracted content to avoid re-extraction
   private extractedContent = new Map<string, Uint8Array>();
 
   private readonly defaultConfig: Required<
@@ -173,7 +172,6 @@ export class FileManager {
   ): Promise<FileManagerStats> {
     const startTime = performance.now();
 
-    // Remember root directory so we can create new files/directories later
     this.rootDirectoryHandle = directoryHandle;
 
     logger.info('Starting file system scan');
@@ -202,12 +200,10 @@ export class FileManager {
     }
     logger.info(`Scanned ${this.metadata.size} files, processing documents...`);
 
-    // Extract text from documents before loading to WASM
     const documentsExtracted = await this.extractDocuments();
 
     logger.info(`Extracted ${documentsExtracted} documents, loading to WASM...`);
 
-    // Load to WASM
     const binaryFilesSkipped = await this.loadToWasm();
 
     const stats: FileManagerStats = {
@@ -241,7 +237,6 @@ export class FileManager {
     logger.info(`Found ${documentPaths.length} documents to extract`);
     let extractedCount = 0;
 
-    // Process documents in batches
     const batchSize = Math.min(this.config.batchSize!, 10); // Smaller batches for documents
 
     for (let i = 0; i < documentPaths.length; i += batchSize) {
@@ -260,7 +255,6 @@ export class FileManager {
               const file = await handle.getFile();
               const buffer = await file.arrayBuffer();
 
-              // Report progress
               this.config.onDocumentExtractionProgress?.(
                 Math.min(i + batch.indexOf(path) + 1, documentPaths.length),
                 documentPaths.length,
@@ -270,14 +264,11 @@ export class FileManager {
               const extractedText = await DocumentExtractor.extractHtml(path, buffer);
 
               if (extractedText) {
-                // Create a new buffer with the extracted text
                 const textEncoder = new TextEncoder();
                 const textBuffer = textEncoder.encode(extractedText);
 
-                // Store the extracted content
                 this.extractedContent.set(path, textBuffer);
 
-                // Update metadata
                 const metadata = this.metadata.get(path);
                 if (metadata) {
                   this.metadata.set(path, {
@@ -319,7 +310,6 @@ export class FileManager {
     const batchSize = this.config.batchSize!;
     let binaryFilesSkipped = 0;
 
-    // Ensure WASM is initialized before using it
     try {
       wasm.ping();
     } catch {
@@ -334,7 +324,6 @@ export class FileManager {
       for (let i = 0; i < paths.length; i += batchSize) {
         const batch = paths.slice(i, i + batchSize);
 
-        // Load contents and detect MIME types in parallel
         const results = await Promise.all(
           batch.map((path) =>
             this.limit(async () => {
@@ -342,9 +331,7 @@ export class FileManager {
                 const handle = this.handles.get(path)!;
                 const metadata = this.metadata.get(path);
 
-                // Check if this is an extracted document
                 if (metadata?.extracted) {
-                  // Use the pre-extracted content if available
                   const extractedContent = this.extractedContent.get(path);
                   if (extractedContent) {
                     return {
@@ -353,18 +340,16 @@ export class FileManager {
                     };
                   }
 
-                  // If no pre-extracted content, skip this file
                   logger.warn(`No extracted content found for ${path}, skipping`);
                   return null;
                 }
 
                 const file = await handle.getFile();
 
-                // Check if file is binary before loading
                 const isBinary = await isBinaryFile(file);
                 if (isBinary) {
                   logFileOperation('Skipping binary file', path);
-                  return null; // Skip binary files
+                  return null;
                 }
 
                 const buffer = await file.arrayBuffer();
@@ -381,21 +366,17 @@ export class FileManager {
           ),
         );
 
-        // Filter out null results (binary files)
         const validResults = results.filter((r): r is NonNullable<typeof r> => r !== null);
         binaryFilesSkipped += results.length - validResults.length;
 
         if (validResults.length > 0) {
-          // Extract data from valid results
           const validPaths = validResults.map((r) => r.path);
           const contents = validResults.map((r) => r.content);
 
-          // Prepare for WASM
           const normalizedPaths = validPaths.map((p) => normalizePath(p));
           const timestamps = validPaths.map(
             (p) => this.metadata.get(p)?.lastModified ?? Date.now(),
           );
-          // Get editable flags for each file
           const permissions = validPaths.map(
             (p) => this.metadata.get(p)?.editable !== false
           );
@@ -411,11 +392,9 @@ export class FileManager {
             throw new Error('Invalid batch data: parameters must be arrays');
           }
 
-          // Check for undefined content
           const undefinedContentIndex = contents.findIndex(c => c === undefined || c === null);
           if (undefinedContentIndex !== -1) {
             console.error('Found undefined content at index:', undefinedContentIndex, 'for path:', normalizedPaths[undefinedContentIndex]);
-            // Filter out entries with undefined content
             const validIndices = contents
               .map((c, i) => c !== undefined && c !== null ? i : -1)
               .filter(i => i !== -1);
@@ -443,7 +422,6 @@ export class FileManager {
               throw filteredError;
             }
           } else {
-            // Load batch (contents is Uint8Array[] - wasm-bindgen will handle conversion)
             try {
               wasm.load_file_batch(normalizedPaths, contents, timestamps, permissions);
             } catch (batchError) {
@@ -455,7 +433,6 @@ export class FileManager {
                 permissionsCount: permissions.length,
                 firstPath: normalizedPaths[0],
                 firstContentLength: contents[0]?.length,
-                // Add more debugging info
                 pathsType: Array.isArray(normalizedPaths) ? 'array' : typeof normalizedPaths,
                 contentsType: Array.isArray(contents) ? 'array' : typeof contents,
                 timestampsType: Array.isArray(timestamps) ? 'array' : typeof timestamps,
@@ -467,7 +444,6 @@ export class FileManager {
           }
         }
 
-        // Progress callback
         this.config.onProgress?.(Math.min(i + batchSize, paths.length), paths.length);
       }
 

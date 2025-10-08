@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Train, Loader2, Info, Folder, AlertCircle, ChevronRight, ChevronLeft, HardDrive, Cpu, Shield, Github } from "lucide-react"
+import Image from "next/image"
+import { Train, Loader2, Info, Folder, AlertCircle, ChevronRight, ChevronLeft, HardDrive, Cpu, Shield, Github, LogIn, User, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -21,6 +22,7 @@ import {
 import { FileService } from "@conduit/fs"
 import { formatFileSize } from "@conduit/fs"
 import * as wasm from "@conduit/wasm"
+import { useAuth0 } from "@/lib/auth0-provider"
 
 interface SetupModalProps {
     open: boolean
@@ -34,7 +36,7 @@ interface SetupModalProps {
     }) => void
 }
 
-type Step = "welcome" | "directory" | "provider"
+type Step = "welcome" | "auth" | "directory" | "provider"
 
 const MODELS = {
     anthropic: [
@@ -47,18 +49,27 @@ const MODELS = {
 }
 
 export function SetupModal({ open, onComplete }: SetupModalProps) {
-    const [step, setStep] = useState<Step>("welcome")
+    const isReturningFromAuth = typeof window !== 'undefined' &&
+        window.location.search.includes('code=') &&
+        window.location.search.includes('state=') &&
+        sessionStorage.getItem('conduit_setup_in_progress') === 'true'
+
+    const [step, setStep] = useState<Step>(() => {
+        if (isReturningFromAuth) {
+            return "directory"
+        }
+        return "welcome"
+    })
+    const { isAuthenticated, isLoading: authLoading, isEnabled: authEnabled, user, loginWithRedirect } = useAuth0()
     const [provider] = useState<"anthropic">("anthropic")
     const [apiKey, setApiKey] = useState("")
     const [model, setModel] = useState("claude-sonnet-4-20250514")
     const [directory, setDirectory] = useState<FileSystemDirectoryHandle | null>(null)
     const [mode, setMode] = useState<"read" | "readwrite">("readwrite")
 
-    const navigateToStep = (newStep: Step) => {
-        if (newStep !== step) {
-            setStep(newStep)
-        }
-    }
+    const navigateToStep = useCallback((newStep: Step) => {
+        setStep(newStep)
+    }, [])
     const [isScanning, setIsScanning] = useState(false)
     const [hasScanned, setHasScanned] = useState(false)
     const [scanProgress, setScanProgress] = useState<{
@@ -84,7 +95,6 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
 
     const [fileService] = useState(() => new FileService({
         onScanProgress: (filesFound: number, currentPath?: string) => {
-            // Throttle updates to prevent UI slowdown
             const now = Date.now()
             if (now - lastUpdateRef.current > 100) {
                 lastUpdateRef.current = now
@@ -96,7 +106,6 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             }
         },
         onProgress: (loaded: number, total: number) => {
-            // Throttle updates to prevent UI slowdown
             const now = Date.now()
             if (now - lastUpdateRef.current > 100) {
                 lastUpdateRef.current = now
@@ -126,17 +135,14 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             setApiKey(anthropicKey)
         }
 
-        // Check browser support
         if (!window.showDirectoryPicker) {
             setBrowserSupported(false)
         }
 
-        // Initialize WASM when modal opens
         const initWasm = async () => {
             try {
                 await wasm.default()
                 wasm.init()
-                console.log('WASM initialized in SetupModal')
             } catch (err) {
                 console.error('Failed to initialize WASM in SetupModal:', err)
             }
@@ -152,6 +158,13 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             setModel(models[0].value)
         }
     }, [provider, model])
+
+
+    useEffect(() => {
+        if (step === "auth" && isAuthenticated && !authLoading) {
+            navigateToStep("directory")
+        }
+    }, [step, isAuthenticated, authLoading, navigateToStep])
 
 
     const handleDirectoryPicker = async () => {
@@ -172,8 +185,31 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
         }
     }
 
-    const handleNext = () => {
+    const handleNext = async () => {
         if (step === "welcome") {
+            if (typeof window !== 'undefined') {
+                sessionStorage.setItem('conduit_setup_in_progress', 'true')
+            }
+
+            if (!authEnabled) {
+                navigateToStep("directory")
+            } else if (authLoading) {
+                return
+            } else if (isAuthenticated) {
+                navigateToStep("directory")
+            } else {
+                navigateToStep("auth")
+            }
+            return
+        }
+        if (step === "auth") {
+            if (!isAuthenticated) {
+                if (typeof window !== 'undefined') {
+                    sessionStorage.setItem('conduit_setup_in_progress', 'true')
+                }
+                await loginWithRedirect()
+                return
+            }
             navigateToStep("directory")
             return
         }
@@ -189,46 +225,36 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             navigateToStep("directory")
         } else if (step === "directory") {
             navigateToStep("welcome")
+        } else if (step === "auth") {
+            navigateToStep("welcome")
         }
     }
 
     const handleScan = async () => {
-        console.log('handleScan called', { directory: !!directory, isScanning })
-
         if (!directory || isScanning) {
-            console.log('Scan blocked:', { directory: !!directory, isScanning })
             return
         }
 
-        console.log('Starting scan...')
         setIsScanning(true)
         setScanProgress({ phase: "scanning", filesFound: 0 })
         setError(null)
 
         try {
-            // Test WASM first
             try {
                 wasm.ping()
-                console.log('WASM ping successful')
             } catch {
                 console.error('WASM not initialized, attempting to initialize now...')
                 await wasm.default()
                 wasm.init()
-                console.log('WASM initialized successfully')
             }
 
-            // Small delay to ensure UI updates before heavy operation
             await new Promise(resolve => setTimeout(resolve, 100))
 
-            // Initialize the file service - callbacks already configured in constructor
-            console.log('Calling fileService.initialize...')
             const stats = await fileService.initialize(directory)
 
-            // Ensure final stats are shown
             setScanProgress(prev => prev ? { ...prev, filesFound: stats.filesScanned, loaded: stats.filesLoaded, total: stats.filesScanned } : null)
             setScanStats(stats)
             setHasScanned(true)
-            console.log('Scan completed successfully', stats)
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to scan directory")
             console.error("Scan failed with full error:", err)
@@ -242,6 +268,12 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
 
         localStorage.setItem("anthropicApiKey", apiKey)
         localStorage.setItem("lastProvider", "anthropic")
+
+        // Clear the setup in progress flag
+        if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('conduit_setup_in_progress')
+        }
+
         onComplete({ provider, apiKey, model, directory, mode, fileService })
     }
 
@@ -316,7 +348,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                 <div className="flex items-center justify-between">
                                     <DialogTitle className="flex items-center gap-2">
                                         <Train className="h-5 w-5" />
-                                        {step === "welcome" ? "Welcome to Conduit" : "Setup Conduit"}
+                                        {step === "welcome" ? "Welcome to Conduit" : step === "auth" ? "Authentication" : "Setup Conduit"}
                                     </DialogTitle>
                                     <a
                                         href="https://github.com/abaveja313/conduit"
@@ -382,6 +414,99 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                                 </div>
                                             </div>
                                         )}
+                                    </div>
+                                )}
+                                {step === "auth" && (
+                                    <div className="space-y-6">
+                                        <div className="text-center space-y-4">
+                                            {authLoading ? (
+                                                <div className="flex flex-col items-center justify-center space-y-4 py-8">
+                                                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                                    <p className="text-sm text-muted-foreground">Checking authentication status...</p>
+                                                </div>
+                                            ) : isAuthenticated && user ? (
+                                                <div className="space-y-6">
+                                                    <div className="flex flex-col items-center space-y-4">
+                                                        <div className="relative">
+                                                            <div className="h-20 w-20 rounded-full bg-green-500/10 flex items-center justify-center">
+                                                                <CheckCircle className="h-10 w-10 text-green-500" />
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <p className="text-lg font-semibold">Welcome back!</p>
+                                                            <p className="text-sm text-muted-foreground">
+                                                                Signed in as {user.email || user.nickname || 'User'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    {user.picture && (
+                                                        <div className="flex justify-center">
+                                                            <Image
+                                                                src={user.picture}
+                                                                alt="Profile"
+                                                                width={48}
+                                                                height={48}
+                                                                className="rounded-full border-2 border-primary/20"
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    <div className="bg-primary/5 border border-primary/10 rounded-lg p-4 max-w-sm mx-auto">
+                                                        <div className="flex items-center gap-3">
+                                                            <Shield className="h-5 w-5 text-primary flex-shrink-0" />
+                                                            <div className="text-left space-y-1">
+                                                                <p className="text-sm font-medium">Secure Authentication</p>
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    Your identity has been verified. Click Next to continue.
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-6">
+                                                    <div className="flex flex-col items-center space-y-4">
+                                                        <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
+                                                            <Shield className="h-10 w-10 text-primary" />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <p className="text-lg font-semibold">Verify Email</p>
+                                                            <p className="text-sm text-muted-foreground max-w-md">
+                                                                This helps us prevent abuse and ensures everyone gets a fair chance to try Conduit.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-3 max-w-sm mx-auto w-full">
+                                                        <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-primary/5 border border-primary/10">
+                                                            <Shield className="h-5 w-5 text-primary flex-shrink-0" />
+                                                            <div className="flex-1 text-left">
+                                                                <p className="font-medium">Secure with Auth0</p>
+                                                                <p className="text-xs text-muted-foreground">Industry-standard authentication</p>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-green-500/5 border border-green-500/10">
+                                                            <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                                                            <div className="flex-1 text-left">
+                                                                <p className="font-medium">100% Private</p>
+                                                                <p className="text-xs text-muted-foreground">Your data is never shared</p>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-3 text-sm p-3 rounded-lg bg-orange-500/5 border border-orange-500/10">
+                                                            <User className="h-5 w-5 text-orange-500 flex-shrink-0" />
+                                                            <div className="flex-1 text-left">
+                                                                <p className="font-medium">No Spam, Ever</p>
+                                                                <p className="text-xs text-muted-foreground">We won&apos;t send you marketing emails</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                                 {step === "provider" && (
@@ -534,7 +659,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                             </div>
 
                             <DialogFooter className="p-6 pt-0">
-                                {(step === "directory" || step === "provider") && (
+                                {(step === "auth" || step === "directory" || step === "provider") && (
                                     <Button
                                         type="button"
                                         variant="outline"
@@ -547,9 +672,43 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                 )}
 
                                 {step === "welcome" && (
-                                    <Button type="button" onClick={handleNext} disabled={!browserSupported}>
-                                        Next
-                                        <ChevronRight className="h-4 w-4" />
+                                    <Button type="button" onClick={handleNext} disabled={!browserSupported || (authEnabled && authLoading)}>
+                                        {authEnabled && authLoading ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Checking authentication...
+                                            </>
+                                        ) : (
+                                            <>
+                                                Next
+                                                <ChevronRight className="h-4 w-4" />
+                                            </>
+                                        )}
+                                    </Button>
+                                )}
+
+                                {step === "auth" && (
+                                    <Button
+                                        type="button"
+                                        onClick={handleNext}
+                                        disabled={authLoading}
+                                    >
+                                        {authLoading ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Loading...
+                                            </>
+                                        ) : isAuthenticated ? (
+                                            <>
+                                                Next
+                                                <ChevronRight className="h-4 w-4" />
+                                            </>
+                                        ) : (
+                                            <>
+                                                <LogIn className="h-4 w-4" />
+                                                Verify Email
+                                            </>
+                                        )}
                                     </Button>
                                 )}
 

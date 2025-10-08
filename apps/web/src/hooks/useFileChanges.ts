@@ -37,7 +37,6 @@ export function useFileChanges(fileService: FileService | null) {
     try {
       const diff = await fileService.getFileDiff(path)
 
-      // Update the file change with diff regions
       setFileChanges(prev => prev.map(change =>
         change.path === path
           ? { ...change, diffRegions: diff.regions }
@@ -52,12 +51,9 @@ export function useFileChanges(fileService: FileService | null) {
     setExpanded(prev => {
       const next = new Set<string>()
       if (!prev.has(path)) {
-        // Only keep the newly expanded item
         next.add(path)
-        // Fetch diff regions if not already loaded
         fetchDiffRegions(path)
       }
-      // If already expanded, collapse it (next remains empty)
       return next
     })
   }, [fetchDiffRegions])

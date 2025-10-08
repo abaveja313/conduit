@@ -14,13 +14,13 @@ import { useFileChanges } from "@/hooks/useFileChanges"
 import { formatDuration, formatMemory } from "@/lib/format"
 import { DEFAULT_DIVIDER_POSITION, COMMIT_BANNER_TIMEOUT, STATUS_COLORS } from "@/lib/constants"
 import * as wasm from "@conduit/wasm"
+import { mixpanel } from "@/lib/mixpanel"
 
 interface FileChange {
   path: string
   status: "created" | "modified" | "deleted"
   linesAdded: number
   linesRemoved: number
-  // Diff regions are loaded on-demand when expanded
   diffRegions?: Array<{
     originalStart: number
     linesRemoved: number
@@ -204,6 +204,20 @@ function MessageContentRenderer({
 export default function Home() {
   const [isSetupComplete, setIsSetupComplete] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+
+  useEffect(() => {
+    const hasApiKey = localStorage.getItem('anthropicApiKey')
+    console.log('Home page state:', {
+      isSetupComplete,
+      showSettings,
+      hasStoredApiKey: !!hasApiKey
+    })
+
+    // If you have an API key stored, you might have completed setup before
+    if (hasApiKey && !isSetupComplete) {
+      console.log('Found stored API key but setup not complete - modal should be showing')
+    }
+  }, [isSetupComplete, showSettings])
   const [isStagingCollapsed, setIsStagingCollapsed] = useState(false)
   const [currentModel, setCurrentModel] = useState("")
   const [fileService, setFileService] = useState<FileService | null>(null)
@@ -245,10 +259,8 @@ export default function Home() {
   const [fullFileContent, setFullFileContent] = useState<Map<string, React.ReactElement | null>>(new Map())
   const latencies = useRef<number[]>([])
 
-  // Use the file changes hook
   const { fileChanges, expanded, updateFileChanges, toggleExpanded, setFileChanges, clearExpanded } = useFileChanges(fileService)
 
-  // Initialize WASM on page load
   useEffect(() => {
     const initWasm = async () => {
       try {
@@ -364,6 +376,13 @@ export default function Home() {
       role: "user",
       content: input.trim()
     }
+
+    // Track message submission
+    mixpanel.track('Message Submitted', {
+      messageLength: userMessage.content.length,
+      model: currentModel,
+      timestamp: new Date().toISOString()
+    })
 
     setMessages(prev => [...prev, userMessage])
     setInput("")
@@ -490,20 +509,16 @@ export default function Home() {
     if (!fileService) return null
 
     try {
-      // First, get a sample to know the total lines
       const sample = await fileService.readFile({
         path,
         lineRange: { start: 1, end: 1 }
       })
 
-      // Then read the entire file
       const result = await fileService.readFile({
         path,
         lineRange: { start: 1, end: sample.totalLines }
       })
 
-      // result.lines is an array of objects like [{1: "content"}, {2: "content"}]
-      // We need to extract the line number and content from each object
       const lines = result.lines.map((lineObj: { [key: number]: string }) => {
         const [lineNum, content] = Object.entries(lineObj)[0]
         return { lineNum, content }
@@ -537,7 +552,6 @@ export default function Home() {
       return next
     })
 
-    // Fetch full file content if switching to full view
     if (newMode === 'full' && !fullFileContent.has(path)) {
       const content = await fetchFullFile(path)
       setFullFileContent(prev => {
@@ -548,11 +562,9 @@ export default function Home() {
     }
   }
 
-  // Override toggleExpanded to clear view mode when collapsing
   const handleToggleExpanded = (path: string) => {
     const isExpanded = expanded.has(path)
     if (isExpanded) {
-      // Clearing - reset view mode and content
       setViewMode(prev => {
         const next = new Map(prev)
         next.delete(path)
@@ -576,7 +588,6 @@ export default function Home() {
       )
     }
 
-    // For deleted files, show all content as removed
     if (change.status === 'deleted' && change.diffRegions.length === 1 &&
       change.diffRegions[0].linesRemoved > 0 && change.diffRegions[0].linesAdded === 0) {
       const region = change.diffRegions[0]
@@ -600,7 +611,6 @@ export default function Home() {
       )
     }
 
-    // For created files, show all content as added
     if (change.status === 'created' && change.diffRegions.length === 1 &&
       change.diffRegions[0].linesAdded > 0 && change.diffRegions[0].linesRemoved === 0) {
       const region = change.diffRegions[0]
@@ -624,12 +634,10 @@ export default function Home() {
       )
     }
 
-    // Render inline diff regions
     const allLines: React.ReactElement[] = []
     let lineKey = 0
 
     change.diffRegions.forEach((region, idx) => {
-      // Add a separator between regions if not the first one
       if (idx > 0) {
         allLines.push(
           <div key={`sep-${idx}`} className="h-4 relative">
@@ -640,9 +648,7 @@ export default function Home() {
         )
       }
 
-      // For modifications, show removed lines followed by added lines
       if (region.linesRemoved > 0 && region.linesAdded > 0) {
-        // This is a modification - add a header
         allLines.push(
           <div key={`header-${idx}`} className="text-xs text-muted-foreground py-2 px-4 bg-secondary/30">
             Modified: {region.linesRemoved} line{region.linesRemoved > 1 ? 's' : ''} → {region.linesAdded} line{region.linesAdded > 1 ? 's' : ''}
@@ -650,7 +656,6 @@ export default function Home() {
         )
       }
 
-      // Add removed lines
       region.removedLines.forEach((line, i) => {
         allLines.push(
           <div key={`del-${lineKey++}`} className="flex hover:bg-red-500/20 transition-colors min-w-fit">
@@ -664,7 +669,6 @@ export default function Home() {
         )
       })
 
-      // Add added lines
       region.addedLines.forEach((line, i) => {
         allLines.push(
           <div key={`add-${lineKey++}`} className="flex hover:bg-green-500/20 transition-colors min-w-fit">
@@ -693,6 +697,14 @@ export default function Home() {
       const result = await fileService.commitChanges()
       console.log(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`)
 
+      // Track persist action
+      mixpanel.track('Changes Persisted', {
+        filesModified: result.modified.length,
+        filesDeleted: result.deleted.length,
+        totalFiles: result.fileCount,
+        timestamp: new Date().toISOString()
+      })
+
       setCommitBanner({
         show: true,
         stats: {
@@ -704,7 +716,6 @@ export default function Home() {
 
       setFileChanges([])
 
-      // Refresh the files list to show the committed changes
       await loadFiles(fileService, 0)
 
       setTimeout(() => {
@@ -720,11 +731,16 @@ export default function Home() {
     if (!fileService) return
 
     try {
+      // Track revert action (before reverting to capture file count)
+      mixpanel.track('Changes Reverted', {
+        filesReverted: fileChanges.length,
+        timestamp: new Date().toISOString()
+      })
+
       await fileService.revertChanges()
       setFileChanges([])
       console.log('Reverted all staged changes')
 
-      // Refresh the files list to reflect the reverted state
       await loadFiles(fileService, 0)
     } catch (error) {
       console.error('Failed to revert changes:', error)

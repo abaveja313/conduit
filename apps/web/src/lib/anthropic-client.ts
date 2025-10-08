@@ -1,6 +1,7 @@
 import { FileService } from '@conduit/fs';
 import { streamText, tool, stepCountIs } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { mixpanel } from './mixpanel';
 
 const SYSTEM_PROMPT = `You are Conduit, an AI-powered file system assistant. You help users navigate, understand, and modify their codebase.
 
@@ -69,27 +70,29 @@ export interface StreamMessage {
   error?: string;
 }
 
-// Convert FileService tools to AI SDK format
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createTools(fileService: FileService): Record<string, any> {
   const fsTools = fileService.getTools();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tools: Record<string, any> = {};
 
-  // Convert each tool to AI SDK format, excluding beginStaging
   for (const [name, fsTool] of Object.entries(fsTools)) {
-    // Skip beginStaging tool - we handle this automatically
     if (name === 'beginStaging') {
       continue;
     }
 
     tools[name] = tool({
       description: fsTool.description,
-      inputSchema: fsTool.parameters, // Use Zod schema directly - AI SDK handles conversion
+      inputSchema: fsTool.parameters,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       execute: async (args: any) => {
-        // Always ensure staging is started before any tool call (idempotent)
         await fileService.beginStaging();
+
+        // Track tool invocation
+        mixpanel.track('Tool Invoked', {
+          toolName: name,
+          timestamp: new Date().toISOString()
+        });
 
         try {
           const result = await fsTool.execute(args);
@@ -112,19 +115,15 @@ export async function* streamAnthropicResponse(
   fileService: FileService
 ): AsyncGenerator<StreamMessage> {
   try {
-    // Ensure staging is started at the beginning of each conversation
     await fileService.beginStaging();
 
-    // Create Anthropic client with browser access header
     const anthropic = createAnthropic({
       apiKey,
       headers: { 'anthropic-dangerous-direct-browser-access': 'true' }
     });
 
-    // Create tools from FileService
     const tools = createTools(fileService);
 
-    // Stream text with tools and multi-turn support
     const result = await streamText({
       model: anthropic(model),
       messages: [
@@ -134,10 +133,8 @@ export async function* streamAnthropicResponse(
       tools,
       toolChoice: 'auto',
       temperature: 0,
-      // Enable multi-step tool calling: the model can call tools, reason on results, and continue
-      stopWhen: stepCountIs(30), // Allow up to 10 steps for complex tasks
+      stopWhen: stepCountIs(30),
 
-      // Log each step for debugging
       onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
         console.log('Step finished:', {
           text: text?.substring(0, 100),
@@ -149,7 +146,6 @@ export async function* streamAnthropicResponse(
       }
     });
 
-    // Stream the response as it comes in
     for await (const chunk of result.fullStream) {
       switch (chunk.type) {
         case 'text-delta':
@@ -185,7 +181,6 @@ export async function* streamAnthropicResponse(
         case 'error': {
           console.error('Stream chunk error:', chunk.error);
 
-          // Handle content filtering errors specifically
           const errorMessage = chunk.error instanceof Error
             ? chunk.error.message
             : typeof chunk.error === 'object' && chunk.error !== null && 'message' in chunk.error
@@ -200,7 +195,6 @@ export async function* streamAnthropicResponse(
         }
 
         case 'finish':
-          // Stream completed
           break;
       }
     }

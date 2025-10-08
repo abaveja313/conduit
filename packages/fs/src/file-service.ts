@@ -101,9 +101,6 @@ export class FileService {
         this.fileManager = new FileManager(config);
     }
 
-    /**
-     * Ensure WASM is initialized
-     */
     private async ensureWasmInitialized(): Promise<void> {
         if (this.wasmInitialized) return;
 
@@ -126,7 +123,6 @@ export class FileService {
     }> {
         const validated = readFileSchema.parse(params);
 
-        // Validate line range
         if (validated.lineRange.end < validated.lineRange.start) {
             throw new Error(`Invalid line range: end (${validated.lineRange.end}) must be >= start (${validated.lineRange.start})`);
         }
@@ -147,7 +143,6 @@ export class FileService {
                 throw new Error(`File not found: ${normalizedPath}`);
             }
 
-            // Split content into lines and create simplified format
             const lines = result.content.split('\n').map((content, index) => {
                 const lineNum = result.startLine + index;
                 return { [lineNum]: content };
@@ -179,9 +174,7 @@ export class FileService {
         try {
             const contentBytes = encodeText(content);
 
-            const result = wasm.create_index_file(normalizedPath, contentBytes, true);
-
-            logger.info(`Staged file creation: ${normalizedPath} (${result.size} bytes)`);
+            wasm.create_index_file(normalizedPath, contentBytes, true);
         } catch (error) {
             throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
                 operation: 'create_file',
@@ -200,9 +193,7 @@ export class FileService {
         await this.ensureWasmInitialized();
 
         try {
-            const result = wasm.delete_index_file(normalizedPath);
-
-            logger.info(`Staged file deletion: ${normalizedPath} (existed: ${result.existed})`);
+            wasm.delete_index_file(normalizedPath);
         } catch (error) {
             throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
                 operation: 'delete_file',
@@ -529,7 +520,6 @@ export class FileService {
                 for (const path of result.deleted) {
                     try {
                         await this.fileManager.removeFile(path);
-                        logger.info(`Deleted file: ${path}`);
                     } catch (error) {
                         logger.warn(`Failed to delete file: ${path}`, error);
                     }

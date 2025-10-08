@@ -10,7 +10,6 @@ import { fileService } from './file-service.js';
  * @returns The file content with line numbers and total lines
  */
 export async function readEntireFile(path: string) {
-    // First, get file info to know how many lines it has
     const files = await fileService.listFiles({
         start: 0,
         limit: 1,
@@ -22,13 +21,11 @@ export async function readEntireFile(path: string) {
         throw new Error(`File not found: ${path}`);
     }
 
-    // Read a sample to get total lines
     const sample = await fileService.readFile({
         path,
         lineRange: { start: 1, end: 1 }
     });
 
-    // Now read the entire file
     return fileService.readFile({
         path,
         lineRange: { start: 1, end: sample.totalLines }
@@ -42,7 +39,6 @@ export async function readEntireFile(path: string) {
  * @returns An async generator yielding chunks of the file
  */
 export async function* readFileInChunks(path: string, chunkSize = 300) {
-    // Get total lines first
     const sample = await fileService.readFile({
         path,
         lineRange: { start: 1, end: 1 }
