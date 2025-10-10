@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.23",
-    "@auth0/auth0-spa-js": "^2.5.0",
-    "@auth0/nextjs-auth0": "^4.10.0",
     "@conduit/fs": "workspace:*",
     "@conduit/shared": "workspace:*",
     "@conduit/wasm": "workspace:*",
@@ -27,8 +25,6 @@
     "ai": "^5.0.59",
     "eventsource-parser": "^3.0.6",
     "mammoth": "^1.11.0",
-    "mixpanel": "^0.18.1",
-    "mixpanel-browser": "^2.70.0",
     "next": "15.5.3",
     "pdfjs-dist": "^5.4.149",
     "prismjs": "^1.30.0",

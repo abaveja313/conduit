@@ -2,8 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { MixpanelProvider } from '@/lib/mixpanel';
-import { Auth0Provider } from '@/lib/auth0-provider';
+import { GoogleAnalytics } from '@/lib/google-analytics';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -32,10 +31,8 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <MixpanelProvider />
-        <Auth0Provider>
-          <TooltipProvider>{children}</TooltipProvider>
-        </Auth0Provider>
+        <GoogleAnalytics />
+        <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>
   );

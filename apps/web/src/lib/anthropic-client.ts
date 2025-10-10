@@ -1,7 +1,7 @@
 import { FileService } from '@conduit/fs';
 import { streamText, tool, stepCountIs } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { mixpanel } from './mixpanel';
+import { trackEvent } from './gtag';
 
 const SYSTEM_PROMPT = `You are Conduit, an AI-powered file system assistant. You help users navigate, understand, and modify their codebase.
 
@@ -89,8 +89,8 @@ function createTools(fileService: FileService): Record<string, any> {
         await fileService.beginStaging();
 
         // Track tool invocation
-        mixpanel.track('Tool Invoked', {
-          toolName: name,
+        trackEvent('Tool Invoked', {
+          tool_name: name,
           timestamp: new Date().toISOString()
         });
 

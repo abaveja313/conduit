@@ -14,7 +14,7 @@ import { useFileChanges } from "@/hooks/useFileChanges"
 import { formatDuration, formatMemory } from "@/lib/format"
 import { DEFAULT_DIVIDER_POSITION, COMMIT_BANNER_TIMEOUT, STATUS_COLORS } from "@/lib/constants"
 import * as wasm from "@conduit/wasm"
-import { mixpanel } from "@/lib/mixpanel"
+import { trackEvent } from "@/lib/gtag"
 
 interface FileChange {
   path: string
@@ -378,8 +378,8 @@ export default function Home() {
     }
 
     // Track message submission
-    mixpanel.track('Message Submitted', {
-      messageLength: userMessage.content.length,
+    trackEvent('Message Submitted', {
+      message_length: userMessage.content.length,
       model: currentModel,
       timestamp: new Date().toISOString()
     })
@@ -698,10 +698,10 @@ export default function Home() {
       console.log(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`)
 
       // Track persist action
-      mixpanel.track('Changes Persisted', {
-        filesModified: result.modified.length,
-        filesDeleted: result.deleted.length,
-        totalFiles: result.fileCount,
+      trackEvent('Changes Persisted', {
+        files_modified: result.modified.length,
+        files_deleted: result.deleted.length,
+        total_files: result.fileCount,
         timestamp: new Date().toISOString()
       })
 
@@ -731,9 +731,9 @@ export default function Home() {
     if (!fileService) return
 
     try {
-      // Track revert action (before reverting to capture file count)
-      mixpanel.track('Changes Reverted', {
-        filesReverted: fileChanges.length,
+      // Track revert action
+      trackEvent('Changes Reverted', {
+        files_reverted: fileChanges.length,
         timestamp: new Date().toISOString()
       })
 
