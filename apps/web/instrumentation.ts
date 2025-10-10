@@ -1,3 +1,7 @@
+import { createLogger } from '@conduit/shared';
+
+const logger = createLogger('web:instrumentation');
+
 export function register() {
     // No-op for initialization
     // This is called when the instrumentation file is loaded
@@ -62,7 +66,7 @@ export const onRequestError = async (
         await posthog.captureException(error, distinctId, errorProperties);
 
         // Log for debugging
-        console.error('Server error captured:', {
+        logger.error('Server error captured:', {
             message: error.message,
             url: request.url,
             distinctId,

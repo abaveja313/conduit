@@ -21,6 +21,7 @@ import {
 import { FileService } from "@conduit/fs"
 import { formatFileSize } from "@conduit/fs"
 import * as wasm from "@conduit/wasm"
+import { createLogger } from "@conduit/shared"
 import {
     trackScanCompleted,
     checkBrowserCompatibility,
@@ -50,6 +51,8 @@ const MODELS = {
         { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
     ]
 }
+
+const logger = createLogger('web:setup-modal')
 
 export function SetupModal({ open, onComplete }: SetupModalProps) {
     const isReturningFromAuth = typeof window !== 'undefined' &&
@@ -149,7 +152,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                 await wasm.default()
                 wasm.init()
             } catch (err) {
-                console.error('Failed to initialize WASM in SetupModal:', err)
+                logger.error('Failed to initialize WASM in SetupModal:', err)
 
                 // Track WASM initialization failure
                 interface PerformanceMemory {
@@ -193,7 +196,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                 return
             }
             setError("Failed to access directory. Please try again.")
-            console.error("Directory picker failed:", err)
+            logger.error("Directory picker failed:", err)
         }
     }
 
@@ -236,7 +239,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             try {
                 wasm.ping()
             } catch {
-                console.error('WASM not initialized, attempting to initialize now...')
+                logger.error('WASM not initialized, attempting to initialize now...')
                 await wasm.default()
                 wasm.init()
             }
@@ -263,7 +266,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             })
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to scan directory")
-            console.error("Scan failed with full error:", err)
+            logger.error("Scan failed with full error:", err)
         } finally {
             setIsScanning(false)
         }

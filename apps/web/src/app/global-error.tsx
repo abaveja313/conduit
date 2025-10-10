@@ -2,6 +2,9 @@
 
 import posthog from "posthog-js";
 import { useEffect } from "react";
+import { createLogger } from "@conduit/shared";
+
+const logger = createLogger('web:global-error');
 
 export default function GlobalError({
     error,
@@ -22,7 +25,7 @@ export default function GlobalError({
             href: window.location.href
         });
 
-        console.error('Global error boundary caught:', error);
+        logger.error('Global error boundary caught:', error);
     }, [error]);
 
     return (

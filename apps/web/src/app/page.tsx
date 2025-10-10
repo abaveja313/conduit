@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { AnimatePresence } from "framer-motion"
 import { Train, RefreshCw, ChevronRight, Send, Settings, CheckCircle2, FileText, Files, File, Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { createLogger } from "@conduit/shared"
 import { Input } from "@/components/ui/input"
 import { SetupModal } from "@/components/SetupModal"
 import { FileService } from "@conduit/fs"
@@ -209,13 +210,15 @@ function MessageContentRenderer({
   )
 }
 
+const logger = createLogger('web:page')
+
 export default function Home() {
   const [isSetupComplete, setIsSetupComplete] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
     const hasApiKey = localStorage.getItem('anthropicApiKey')
-    console.log('Home page state:', {
+    logger.debug('Home page state:', {
       isSetupComplete,
       showSettings,
       hasStoredApiKey: !!hasApiKey
@@ -223,7 +226,7 @@ export default function Home() {
 
     // If you have an API key stored, you might have completed setup before
     if (hasApiKey && !isSetupComplete) {
-      console.log('Found stored API key but setup not complete - modal should be showing')
+      logger.debug('Found stored API key but setup not complete - modal should be showing')
     }
   }, [isSetupComplete, showSettings])
   const [isStagingCollapsed, setIsStagingCollapsed] = useState(false)
@@ -274,9 +277,9 @@ export default function Home() {
       try {
         await wasm.default()
         wasm.init()
-        console.log('WASM initialized')
+        logger.info('WASM initialized')
       } catch (err) {
-        console.error('Failed to initialize WASM:', err)
+        logger.error('Failed to initialize WASM:', err)
       }
     }
     initWasm()
@@ -362,7 +365,7 @@ export default function Home() {
       setFilesTotal(result.total)
       setFilesPage(page)
     } catch (error) {
-      console.error('Failed to load files:', error)
+      logger.error('Failed to load files:', error)
     } finally {
       setLoadingFiles(false)
     }
@@ -502,7 +505,7 @@ export default function Home() {
         }
       }
     } catch (error) {
-      console.error('Chat error:', error)
+      logger.error('Chat error:', error)
       
       // Track query failure
       const duration = endQueryTimer()
@@ -588,7 +591,7 @@ export default function Home() {
         </div>
       )
     } catch (error) {
-      console.error('Error loading file:', error)
+      logger.error('Error loading file:', error)
       return <div className="text-sm text-red-500">Error loading file</div>
     }
   }
@@ -750,7 +753,7 @@ export default function Home() {
       const result = await fileService.commitChanges()
       const duration = performance.now() - startTime
       
-      console.log(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`)
+      logger.info(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`)
 
       // Calculate total lines changed
       let totalLinesAdded = 0
@@ -786,7 +789,7 @@ export default function Home() {
         setCommitBanner({ show: false, stats: null })
       }, COMMIT_BANNER_TIMEOUT)
     } catch (error) {
-      console.error('Failed to commit changes:', error)
+      logger.error('Failed to commit changes:', error)
       alert('Failed to persist changes. Check console for details.')
     }
   }
@@ -802,11 +805,11 @@ export default function Home() {
 
       await fileService.revertChanges()
       setFileChanges([])
-      console.log('Reverted all staged changes')
+      logger.info('Reverted all staged changes')
 
       await loadFiles(fileService, 0)
     } catch (error) {
-      console.error('Failed to revert changes:', error)
+      logger.error('Failed to revert changes:', error)
       alert('Failed to revert changes. Check console for details.')
     }
   }

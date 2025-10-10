@@ -1,5 +1,7 @@
 import { PostHog } from 'posthog-node';
+import { createLogger } from '@conduit/shared';
 
+const logger = createLogger('web:posthog-server');
 let posthogInstance: PostHog | null = null;
 
 export function getPostHogServer(): PostHog {
@@ -61,7 +63,7 @@ export function extractDistinctIdFromCookie(cookieString?: string): string | nul
             const postHogData = JSON.parse(decodedCookie);
             return postHogData.distinct_id || null;
         } catch (e) {
-            console.error('Error parsing PostHog cookie:', e);
+            logger.error('Error parsing PostHog cookie:', e);
             return null;
         }
     }

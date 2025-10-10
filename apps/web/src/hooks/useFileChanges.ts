@@ -1,5 +1,8 @@
 import { useState, useCallback } from 'react'
 import { FileService } from '@conduit/fs'
+import { createLogger } from '@conduit/shared'
+
+const logger = createLogger('web:hooks:file-changes')
 
 interface FileChange {
   path: string
@@ -27,7 +30,7 @@ export function useFileChanges(fileService: FileService | null) {
       const summaries = await fileService.getModifiedFilesSummary()
       setFileChanges(summaries)
     } catch (error) {
-      console.log('No staged modifications available:', error)
+      logger.debug('No staged modifications available:', error)
     }
   }, [fileService])
 
@@ -43,7 +46,7 @@ export function useFileChanges(fileService: FileService | null) {
           : change
       ))
     } catch (error) {
-      console.error('Failed to fetch diff regions:', error)
+      logger.error('Failed to fetch diff regions:', error)
     }
   }, [fileService])
 

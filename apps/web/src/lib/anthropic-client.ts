@@ -2,6 +2,9 @@ import { FileService } from '@conduit/fs';
 import { streamText, tool, stepCountIs } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { trackToolInvoked, startToolTimer, endToolTimer } from './posthog';
+import { createLogger } from '@conduit/shared';
+
+const logger = createLogger('web:anthropic-client');
 
 const SYSTEM_PROMPT = `You are Conduit, an AI-powered file system assistant. You help users navigate, understand, and modify their codebase.
 
@@ -158,7 +161,7 @@ function createTools(fileService: FileService): Record<string, any> {
           return result;
         } catch (error) {
           const duration = endToolTimer(name);
-          console.error(`Tool execution error for ${name}:`, error);
+          logger.error(`Tool execution error for ${name}:`, error);
 
           // Track failed tool invocation
           trackToolInvoked({
@@ -207,7 +210,7 @@ export async function* streamAnthropicResponse(
       stopWhen: stepCountIs(30),
 
       onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
-        console.log('Step finished:', {
+        logger.debug('Step finished:', {
           text: text?.substring(0, 100),
           toolCalls: toolCalls.length,
           toolResults: toolResults.length,
@@ -250,7 +253,7 @@ export async function* streamAnthropicResponse(
           break;
 
         case 'error': {
-          console.error('Stream chunk error:', chunk.error);
+          logger.error('Stream chunk error:', chunk.error);
 
           const errorMessage = chunk.error instanceof Error
             ? chunk.error.message
@@ -272,7 +275,7 @@ export async function* streamAnthropicResponse(
 
     yield { type: 'done' };
   } catch (error) {
-    console.error('Error in Anthropic stream:', error);
+    logger.error('Error in Anthropic stream:', error);
     yield {
       type: 'error',
       error: error instanceof Error ? error.message : 'Unknown error'

@@ -3,6 +3,9 @@
 import posthog from "posthog-js";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { createLogger } from "@conduit/shared";
+
+const logger = createLogger('web:error');
 
 export default function Error({
     error,
@@ -21,7 +24,7 @@ export default function Error({
             name: error.name
         });
 
-        console.error('Error boundary caught:', error);
+        logger.error('Error boundary caught:', error);
     }, [error]);
 
     return (

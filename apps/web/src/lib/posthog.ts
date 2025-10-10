@@ -273,7 +273,7 @@ export const reset = () => {
     ph.reset();
 };
 
-// Legacy compatibility (to replace gtag functions)
+// Event tracking
 export const trackEvent = (eventName: string, eventParams?: Record<string, unknown>) => {
     const ph = ensurePostHog();
     if (!ph) return;

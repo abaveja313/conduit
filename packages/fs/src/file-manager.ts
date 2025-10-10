@@ -313,7 +313,7 @@ export class FileManager {
     try {
       wasm.ping();
     } catch {
-      console.log('WASM not initialized in loadToWasm, initializing now...');
+      logger.info('WASM not initialized in loadToWasm, initializing now...');
       await wasm.default();
       wasm.init();
     }
@@ -383,7 +383,7 @@ export class FileManager {
 
 
           if (!Array.isArray(normalizedPaths) || !Array.isArray(contents) || !Array.isArray(timestamps) || !Array.isArray(permissions)) {
-            console.error('Invalid batch data - not arrays:', {
+            logger.error('Invalid batch data - not arrays:', {
               normalizedPaths: normalizedPaths,
               contents: contents,
               timestamps: timestamps,
@@ -394,7 +394,7 @@ export class FileManager {
 
           const undefinedContentIndex = contents.findIndex(c => c === undefined || c === null);
           if (undefinedContentIndex !== -1) {
-            console.error('Found undefined content at index:', undefinedContentIndex, 'for path:', normalizedPaths[undefinedContentIndex]);
+            logger.error('Found undefined content at index:', undefinedContentIndex, 'for path:', normalizedPaths[undefinedContentIndex]);
             const validIndices = contents
               .map((c, i) => c !== undefined && c !== null ? i : -1)
               .filter(i => i !== -1);
@@ -405,15 +405,15 @@ export class FileManager {
             const filteredPermissions = validIndices.map(i => permissions[i]);
 
             if (filteredContents.length === 0) {
-              console.warn('No valid content in batch, skipping');
+              logger.warn('No valid content in batch, skipping');
               continue;
             }
 
             try {
               wasm.load_file_batch(filteredPaths, filteredContents, filteredTimestamps, filteredPermissions);
             } catch (filteredError) {
-              console.error('Error loading filtered batch:', filteredError);
-              console.log('Filtered batch details:', {
+              logger.error('Error loading filtered batch:', filteredError);
+              logger.debug('Filtered batch details:', {
                 pathsCount: filteredPaths.length,
                 contentsCount: filteredContents.length,
                 timestampsCount: filteredTimestamps.length,
@@ -425,8 +425,8 @@ export class FileManager {
             try {
               wasm.load_file_batch(normalizedPaths, contents, timestamps, permissions);
             } catch (batchError) {
-              console.error('Error loading file batch:', batchError);
-              console.log('Batch details:', {
+              logger.error('Error loading file batch:', batchError);
+              logger.debug('Batch details:', {
                 pathsCount: normalizedPaths.length,
                 contentsCount: contents.length,
                 timestampsCount: timestamps.length,
