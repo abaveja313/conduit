@@ -27,7 +27,7 @@
     "eslint": "^9.35.0",
     "globals": "^16.4.0",
     "husky": "^9.1.6",
-    "lint-staged": "^16.1.6",
+    "lint-staged": "^16.2.3",
     "prettier": "^3.6.2",
     "prettier-plugin-toml": "^2.0.6",
     "turbo": "^2.5.8",
