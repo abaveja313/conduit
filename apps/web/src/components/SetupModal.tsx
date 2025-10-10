@@ -21,6 +21,11 @@ import {
 import { FileService } from "@conduit/fs"
 import { formatFileSize } from "@conduit/fs"
 import * as wasm from "@conduit/wasm"
+import {
+    trackScanCompleted,
+    checkBrowserCompatibility,
+    trackWasmInitializationFailed
+} from "@/lib/posthog"
 
 interface SetupModalProps {
     open: boolean
@@ -136,12 +141,27 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             setBrowserSupported(false)
         }
 
+        // Check and track browser compatibility
+        checkBrowserCompatibility()
+
         const initWasm = async () => {
             try {
                 await wasm.default()
                 wasm.init()
             } catch (err) {
                 console.error('Failed to initialize WASM in SetupModal:', err)
+
+                // Track WASM initialization failure
+                interface PerformanceMemory {
+                    usedJSHeapSize?: number;
+                    jsHeapSizeLimit?: number;
+                }
+                const memory = 'memory' in performance ? (performance as unknown as { memory: PerformanceMemory }).memory : null
+                trackWasmInitializationFailed({
+                    error: err instanceof Error ? err.message : 'Unknown error',
+                    memoryAvailable: memory?.usedJSHeapSize || 0,
+                    retryAttempt: 0
+                })
             }
         }
         if (open && browserSupported) {
@@ -228,6 +248,19 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             setScanProgress(prev => prev ? { ...prev, filesFound: stats.filesScanned, loaded: stats.filesLoaded, total: stats.filesScanned } : null)
             setScanStats(stats)
             setHasScanned(true)
+
+            // Track scan completion
+            trackScanCompleted({
+                filesScanned: stats.filesScanned,
+                filesLoaded: stats.filesLoaded,
+                binaryFilesSkipped: stats.binaryFilesSkipped,
+                documentsExtracted: stats.documentsExtracted,
+                totalSize: stats.totalSize,
+                duration: stats.duration,
+                directoryMode: mode,
+                model: model,
+                provider: 'anthropic'
+            })
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to scan directory")
             console.error("Scan failed with full error:", err)

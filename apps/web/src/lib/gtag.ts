@@ -7,10 +7,8 @@ declare global {
 // GA4 Measurement ID
 export const GA_TRACKING_ID = process.env.NEXT_PUBLIC_GA_TRACKING_ID || 'G-2P1500GZMF';
 
-// Check if Google Analytics should be enabled
 export const isGAEnabled = !!GA_TRACKING_ID;
 
-// Track page views
 export const pageview = (url: string) => {
     if (!isGAEnabled || typeof window === 'undefined' || !window.gtag) return;
 

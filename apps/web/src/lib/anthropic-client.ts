@@ -1,7 +1,7 @@
 import { FileService } from '@conduit/fs';
 import { streamText, tool, stepCountIs } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { trackEvent } from './gtag';
+import { trackToolInvoked, startToolTimer, endToolTimer } from './posthog';
 
 const SYSTEM_PROMPT = `You are Conduit, an AI-powered file system assistant. You help users navigate, understand, and modify their codebase.
 
@@ -70,6 +70,54 @@ export interface StreamMessage {
   error?: string;
 }
 
+// Helper function to determine the operation type from tool name and args
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function getToolOperation(toolName: string, args: unknown): string | undefined {
+  switch (toolName) {
+    case 'readFile':
+      return 'read';
+    case 'createFile':
+      return 'create';
+    case 'deleteFile':
+      return 'delete';
+    case 'replaceLines':
+    case 'deleteLines':
+    case 'insertLines':
+      return 'modify';
+    case 'listFiles':
+      return 'list';
+    case 'searchFiles':
+      return 'search';
+    case 'getStagedModifications':
+    case 'getStagedModificationsWithDiff':
+      return 'view_staged';
+    case 'commitChanges':
+      return 'commit';
+    case 'revertChanges':
+      return 'revert';
+    default:
+      return undefined;
+  }
+}
+
+// Helper function to calculate lines affected
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getLinesAffected(toolName: string, args: any, result: any): number | undefined {
+  switch (toolName) {
+    case 'replaceLines':
+      return args.lineNumbers?.length || 0;
+    case 'deleteLines':
+      return args.lineNumbers?.length || 0;
+    case 'insertLines':
+      // Count newlines in content
+      return (args.content?.match(/\n/g) || []).length + 1;
+    case 'readFile':
+      return result?.lines?.length || 0;
+    default:
+      return undefined;
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createTools(fileService: FileService): Record<string, any> {
   const fsTools = fileService.getTools();
@@ -88,17 +136,40 @@ function createTools(fileService: FileService): Record<string, any> {
       execute: async (args: any) => {
         await fileService.beginStaging();
 
-        // Track tool invocation
-        trackEvent('Tool Invoked', {
-          tool_name: name,
-          timestamp: new Date().toISOString()
-        });
+        // Start timing the tool execution
+        startToolTimer(name);
 
         try {
           const result = await fsTool.execute(args);
+          const duration = endToolTimer(name);
+
+          // Track successful tool invocation
+          trackToolInvoked({
+            toolName: name,
+            operation: getToolOperation(name, args),
+            path: args.path || args.filePath,
+            linesAffected: getLinesAffected(name, args, result),
+            fileSize: args.size,
+            isDocument: args.path?.endsWith('.pdf') || args.path?.endsWith('.docx'),
+            duration,
+            success: true,
+          });
+
           return result;
         } catch (error) {
+          const duration = endToolTimer(name);
           console.error(`Tool execution error for ${name}:`, error);
+
+          // Track failed tool invocation
+          trackToolInvoked({
+            toolName: name,
+            operation: getToolOperation(name, args),
+            path: args.path || args.filePath,
+            duration,
+            success: false,
+            errorType: error instanceof Error ? error.message : 'Unknown error',
+          });
+
           throw error;
         }
       }

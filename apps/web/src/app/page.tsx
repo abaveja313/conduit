@@ -14,7 +14,15 @@ import { useFileChanges } from "@/hooks/useFileChanges"
 import { formatDuration, formatMemory } from "@/lib/format"
 import { DEFAULT_DIVIDER_POSITION, COMMIT_BANNER_TIMEOUT, STATUS_COLORS } from "@/lib/constants"
 import * as wasm from "@conduit/wasm"
-import { trackEvent } from "@/lib/gtag"
+import { 
+  trackQuerySent, 
+  trackQueryCompleted, 
+  trackChangesCommitted, 
+  trackChangesReverted,
+  trackApiError,
+  startQueryTimer,
+  endQueryTimer
+} from "@/lib/posthog"
 
 interface FileChange {
   path: string
@@ -377,12 +385,15 @@ export default function Home() {
       content: input.trim()
     }
 
-    // Track message submission
-    trackEvent('Message Submitted', {
-      message_length: userMessage.content.length,
+    // Track query sent
+    trackQuerySent({
       model: currentModel,
-      timestamp: new Date().toISOString()
+      messageLength: userMessage.content.length,
+      messageIndex: messages.filter(m => m.role === 'user').length + 1
     })
+    
+    // Start timing the query
+    startQueryTimer()
 
     setMessages(prev => [...prev, userMessage])
     setInput("")
@@ -465,15 +476,55 @@ export default function Home() {
             if (event.error) {
               assistantMessage.content += `\n\nError: ${event.error}`
               setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }])
+              
+              // Track API error
+              trackApiError({
+                provider: 'anthropic',
+                errorCode: 'stream_error',
+                errorMessage: event.error,
+                model: currentModel
+              })
             }
             break
 
           case 'done':
+            // Track successful query completion
+            const duration = endQueryTimer()
+            const toolCallsCount = assistantMessage.toolCalls?.length || 0
+            trackQueryCompleted({
+              model: currentModel,
+              duration,
+              toolCallsCount,
+              responseLength: assistantMessage.content.length,
+              success: true
+            })
             break
         }
       }
     } catch (error) {
       console.error('Chat error:', error)
+      
+      // Track query failure
+      const duration = endQueryTimer()
+      trackQueryCompleted({
+        model: currentModel,
+        duration,
+        toolCallsCount: 0,
+        responseLength: 0,
+        success: false,
+        errorType: error instanceof Error ? error.message : 'Unknown error'
+      })
+      
+      // Track API error if applicable
+      if (error instanceof Error) {
+        trackApiError({
+          provider: 'anthropic',
+          errorCode: error.name || 'unknown',
+          errorMessage: error.message,
+          model: currentModel
+        })
+      }
+      
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: "assistant",
@@ -693,16 +744,29 @@ export default function Home() {
   const handleCommit = async () => {
     if (!fileService) return
 
+    const startTime = performance.now()
+    
     try {
       const result = await fileService.commitChanges()
+      const duration = performance.now() - startTime
+      
       console.log(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`)
 
-      // Track persist action
-      trackEvent('Changes Persisted', {
-        files_modified: result.modified.length,
-        files_deleted: result.deleted.length,
-        total_files: result.fileCount,
-        timestamp: new Date().toISOString()
+      // Calculate total lines changed
+      let totalLinesAdded = 0
+      let totalLinesRemoved = 0
+      fileChanges.forEach(change => {
+        totalLinesAdded += change.linesAdded
+        totalLinesRemoved += change.linesRemoved
+      })
+      
+      // Track changes committed
+      trackChangesCommitted({
+        filesModified: result.modified.length,
+        filesDeleted: result.deleted.length,
+        totalLinesAdded,
+        totalLinesRemoved,
+        duration
       })
 
       setCommitBanner({
@@ -731,10 +795,9 @@ export default function Home() {
     if (!fileService) return
 
     try {
-      // Track revert action
-      trackEvent('Changes Reverted', {
-        files_reverted: fileChanges.length,
-        timestamp: new Date().toISOString()
+      // Track changes reverted
+      trackChangesReverted({
+        fileCount: fileChanges.length
       })
 
       await fileService.revertChanges()

@@ -16,9 +16,7 @@ const nextConfig: NextConfig = {
 
     return config;
   },
-  // COEP/COOP headers are NOT needed for File System Access API
-  // Only needed for SharedArrayBuffer, OPFS, or WebAssembly threads
-  // Removing these allows Google Analytics, Mixpanel, and other third-party services to work
+
   async headers() {
     return [
       {

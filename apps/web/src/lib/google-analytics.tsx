@@ -1,21 +1,25 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import { GA_TRACKING_ID, pageview, isGAEnabled } from "./gtag";
 
-export function GoogleAnalytics() {
+function GoogleAnalyticsInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   useEffect(() => {
     if (!isGAEnabled) return;
-    
+
     const url = `${pathname}${searchParams ? `?${searchParams}` : ""}`;
     pageview(url);
   }, [pathname, searchParams]);
 
+  return null;
+}
+
+export function GoogleAnalytics() {
   if (!isGAEnabled) {
     return null;
   }
@@ -40,6 +44,9 @@ export function GoogleAnalytics() {
           `,
         }}
       />
+      <Suspense fallback={null}>
+        <GoogleAnalyticsInner />
+      </Suspense>
     </>
   );
 }
