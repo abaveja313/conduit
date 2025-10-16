@@ -3,7 +3,7 @@ import { createLogger } from '@conduit/shared';
 
 const logger = createLogger('web:api:anthropic');
 
-export const runtime = 'edge';
+// Using nodejs runtime for better compatibility with streaming responses
 export const maxDuration = 300; // 5 minutes for long conversations
 
 export async function POST(request: NextRequest) {

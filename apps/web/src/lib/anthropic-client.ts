@@ -194,8 +194,12 @@ export async function* streamAnthropicResponse(
         const headers = new Headers(options?.headers);
         headers.set('x-anthropic-path', anthropicUrl.pathname);
 
+        // Only include user API key if explicitly provided
         if (apiKey && apiKey.trim()) {
           headers.set('x-api-key', apiKey);
+          logger.debug('Using user-provided API key');
+        } else {
+          logger.debug('No user API key provided, using server-side key');
         }
 
         // Include shared secret for API protection

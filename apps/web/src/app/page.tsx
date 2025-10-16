@@ -405,7 +405,9 @@ export default function Home() {
     setActiveTab("modifications")
 
     try {
-      const apiKey = localStorage.getItem('anthropicApiKey') || ''
+      // Only use API key if explicitly set by user (not empty/null)
+      const storedKey = localStorage.getItem('anthropicApiKey')
+      const apiKey = storedKey && storedKey.trim() ? storedKey : ''
 
       const apiMessages = messages.concat(userMessage).map(msg => ({
         role: msg.role as 'user' | 'assistant',

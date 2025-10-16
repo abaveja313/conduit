@@ -86,11 +86,25 @@ const logger = createLogger('web:setup-modal')
 
 export function SetupModal({ open, onComplete }: SetupModalProps) {
     const [step, setStep] = useState<Step>("welcome")
-    const [apiKey, setApiKey] = useState("")
+
+    // Initialize from saved API key if available
+    const savedApiKey = typeof window !== 'undefined' ? localStorage.getItem('anthropicApiKey') : null
+    const hasSavedKey = savedApiKey && savedApiKey.trim()
+    const [apiKey, setApiKey] = useState(hasSavedKey ? savedApiKey : "")
+    const [useOwnKey, setUseOwnKey] = useState(!!hasSavedKey)
+
+    // Log initialization state on mount
+    useEffect(() => {
+        logger.debug('SetupModal initialized', {
+            hasSavedKey: !!hasSavedKey,
+            useOwnKey,
+            apiKeyLength: apiKey.length
+        })
+    }, [])
+
     const [model, setModel] = useState("claude-sonnet-4-20250514")
     const [directory, setDirectory] = useState<FileSystemDirectoryHandle | null>(null)
     const [mode, setMode] = useState<"read" | "readwrite">("readwrite")
-    const [useOwnKey, setUseOwnKey] = useState(false)
 
     const isUsingInternalKey = useFeatureFlagEnabled('use-internal-api-key') || false
 
@@ -293,7 +307,13 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
         if (needsApiKey && !apiKey) return
         if (!directory || !hasScanned) return
 
-        if (apiKey) {
+        // Handle API key storage
+        if (isUsingInternalKey && !useOwnKey) {
+            // Using trial mode - clear any stored API key
+            logger.debug("Using trial mode - clearing stored API key")
+            localStorage.removeItem("anthropicApiKey")
+        } else if (apiKey) {
+            // Using custom API key - save it
             localStorage.setItem("anthropicApiKey", apiKey)
         }
 

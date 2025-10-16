@@ -28,5 +28,15 @@
       "dependsOn": ["build"]
     }
   },
-  "globalEnv": ["CI", "NODE_ENV"]
+  "globalEnv": [
+    "CI",
+    "NODE_ENV",
+    "SHARED_SECRET",
+    "ANTHROPIC_API_KEY",
+    "NEXT_PUBLIC_SHARED_SECRET",
+    "NEXT_PUBLIC_POSTHOG_KEY",
+    "NEXT_PUBLIC_POSTHOG_HOST",
+    "VERCEL",
+    "VERCEL_ENV"
+  ]
 }
