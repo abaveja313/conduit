@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Train, Loader2, Info, Folder, AlertCircle, ChevronRight, ChevronLeft, HardDrive, Cpu, Shield, Github } from "lucide-react"
+import { Train, Loader2, Folder, AlertCircle, ChevronRight, ChevronLeft, HardDrive, Cpu, Shield, Github, Sparkles, Zap, Brain, Crown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -13,11 +13,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipTrigger,
-} from "@/components/ui/tooltip"
 import { FileService } from "@conduit/fs"
 import { formatFileSize } from "@conduit/fs"
 import * as wasm from "@conduit/wasm"
@@ -27,6 +22,7 @@ import {
     checkBrowserCompatibility,
     trackWasmInitializationFailed
 } from "@/lib/posthog"
+import { useFeatureFlagEnabled } from 'posthog-js/react'
 
 interface SetupModalProps {
     open: boolean
@@ -44,37 +40,68 @@ type Step = "welcome" | "directory" | "provider"
 
 const MODELS = {
     anthropic: [
-        { value: "claude-sonnet-4-5-20250929", label: "Claude 4.5 Sonnet" },
-        { value: "claude-opus-4-1-20250805", label: "Claude 4.1 Opus" },
-        { value: "claude-sonnet-4-20250514", label: "Claude 4 Sonnet" },
-        { value: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet" },
-        { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
+        {
+            value: "claude-haiku-4-5-20251001",
+            label: "Claude 4.5 Haiku",
+            description: "Lightning fast responses for simple tasks",
+            icon: Zap,
+            features: ["Fastest", "Cost-effective"],
+            color: "from-blue-500/10 to-cyan-500/10",
+            borderColor: "border-blue-500/20"
+        },
+        {
+            value: "claude-sonnet-4-5-20250929",
+            label: "Claude 4.5 Sonnet",
+            description: "Best balance of speed and intelligence",
+            icon: Sparkles,
+            features: ["Balanced", "Most popular"],
+            recommended: true,
+            color: "from-purple-500/10 to-pink-500/10",
+            borderColor: "border-purple-500/20"
+        },
+        {
+            value: "claude-sonnet-4-20250514",
+            label: "Claude 4 Sonnet",
+            description: "Previous generation balanced model",
+            icon: Brain,
+            features: ["Stable", "Proven"],
+            color: "from-green-500/10 to-emerald-500/10",
+            borderColor: "border-green-500/20"
+        },
+        {
+            value: "claude-opus-4-1-20250805",
+            label: "Claude 4.1 Opus",
+            description: "Most capable model for complex reasoning",
+            icon: Crown,
+            features: ["Most powerful", "Expensive"],
+            premium: true,
+            requiresOwnKey: true,
+            color: "from-amber-500/10 to-orange-500/10",
+            borderColor: "border-amber-500/20"
+        }
     ]
 }
 
 const logger = createLogger('web:setup-modal')
 
 export function SetupModal({ open, onComplete }: SetupModalProps) {
-    const isReturningFromAuth = typeof window !== 'undefined' &&
-        window.location.search.includes('code=') &&
-        window.location.search.includes('state=') &&
-        sessionStorage.getItem('conduit_setup_in_progress') === 'true'
-
-    const [step, setStep] = useState<Step>(() => {
-        if (isReturningFromAuth) {
-            return "directory"
-        }
-        return "welcome"
-    })
-    const [provider] = useState<"anthropic">("anthropic")
+    const [step, setStep] = useState<Step>("welcome")
     const [apiKey, setApiKey] = useState("")
     const [model, setModel] = useState("claude-sonnet-4-20250514")
     const [directory, setDirectory] = useState<FileSystemDirectoryHandle | null>(null)
     const [mode, setMode] = useState<"read" | "readwrite">("readwrite")
+    const [useOwnKey, setUseOwnKey] = useState(false)
 
-    const navigateToStep = useCallback((newStep: Step) => {
-        setStep(newStep)
-    }, [])
+    const isUsingInternalKey = useFeatureFlagEnabled('use-internal-api-key') || false
+
+    const getAvailableModels = useCallback(() => {
+        const allModels = MODELS.anthropic
+        if (isUsingInternalKey && !useOwnKey) {
+            return allModels.filter(m => !m.premium)
+        }
+        return allModels
+    }, [isUsingInternalKey, useOwnKey])
+
     const [isScanning, setIsScanning] = useState(false)
     const [hasScanned, setHasScanned] = useState(false)
     const [scanProgress, setScanProgress] = useState<{
@@ -134,6 +161,14 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
     }))
 
     useEffect(() => {
+        const availableModels = getAvailableModels()
+        const isModelAvailable = availableModels.some(m => m.value === model)
+        if (!isModelAvailable && availableModels.length > 0) {
+            setModel(availableModels[0].value)
+        }
+    }, [getAvailableModels, model])
+
+    useEffect(() => {
         const anthropicKey = localStorage.getItem("anthropicApiKey")
 
         if (anthropicKey) {
@@ -144,7 +179,6 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             setBrowserSupported(false)
         }
 
-        // Check and track browser compatibility
         checkBrowserCompatibility()
 
         const initWasm = async () => {
@@ -154,7 +188,6 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             } catch (err) {
                 logger.error('Failed to initialize WASM in SetupModal:', err)
 
-                // Track WASM initialization failure
                 interface PerformanceMemory {
                     usedJSHeapSize?: number;
                     jsHeapSizeLimit?: number;
@@ -171,16 +204,6 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             initWasm()
         }
     }, [open, browserSupported])
-
-    useEffect(() => {
-        const models = MODELS[provider]
-        if (!models.find(m => m.value === model)) {
-            setModel(models[0].value)
-        }
-    }, [provider, model])
-
-
-
 
     const handleDirectoryPicker = async () => {
         if (!browserSupported) {
@@ -202,27 +225,21 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
 
     const handleNext = async () => {
         if (step === "welcome") {
-            if (typeof window !== 'undefined') {
-                sessionStorage.setItem('conduit_setup_in_progress', 'true')
-            }
-
-            // Skip auth, go directly to directory
-            navigateToStep("directory")
+            setStep("directory")
             return
         }
-        // Auth step removed
         if (step === "directory") {
             if (!hasScanned) return
-            navigateToStep("provider")
+            setStep("provider")
             return
         }
     }
 
     const handleBack = () => {
         if (step === "provider") {
-            navigateToStep("directory")
+            setStep("directory")
         } else if (step === "directory") {
-            navigateToStep("welcome")
+            setStep("welcome")
         }
     }
 
@@ -252,7 +269,6 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             setScanStats(stats)
             setHasScanned(true)
 
-            // Track scan completion
             trackScanCompleted({
                 filesScanned: stats.filesScanned,
                 filesLoaded: stats.filesLoaded,
@@ -261,7 +277,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                 totalSize: stats.totalSize,
                 duration: stats.duration,
                 directoryMode: mode,
-                model: model,
+                model,
                 provider: 'anthropic'
             })
         } catch (err) {
@@ -273,17 +289,24 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
     }
 
     const handleSubmit = async () => {
-        if (!apiKey || !directory || !hasScanned) return
+        const needsApiKey = !isUsingInternalKey || useOwnKey
+        if (needsApiKey && !apiKey) return
+        if (!directory || !hasScanned) return
 
-        localStorage.setItem("anthropicApiKey", apiKey)
-        localStorage.setItem("lastProvider", "anthropic")
-
-        // Clear the setup in progress flag
-        if (typeof window !== 'undefined') {
-            sessionStorage.removeItem('conduit_setup_in_progress')
+        if (apiKey) {
+            localStorage.setItem("anthropicApiKey", apiKey)
         }
 
-        onComplete({ provider, apiKey, model, directory, mode, fileService })
+        const finalApiKey = needsApiKey ? apiKey : ""
+
+        onComplete({
+            provider: "anthropic",
+            apiKey: finalApiKey,
+            model,
+            directory,
+            mode,
+            fileService
+        })
     }
 
     const renderScanProgress = () => {
@@ -341,7 +364,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
     }
 
     return (
-        <Dialog open={open} onOpenChange={() => { /* prevent closing */ }}>
+        <Dialog open={open} onOpenChange={() => { }}>
             <DialogContent className="sm:max-w-[500px] overflow-hidden p-0" hideCloseButton>
                 <div className="relative" style={{ height: "600px" }}>
                     <AnimatePresence mode="wait">
@@ -357,7 +380,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                 <div className="flex items-center justify-between">
                                     <DialogTitle className="flex items-center gap-2">
                                         <Train className="h-5 w-5" />
-                                        {step === "welcome" ? "Welcome to Conduit" : "Setup Conduit"}
+                                        {step === "welcome" ? "Welcome to Conduit" : step === "provider" ? "Select AI" : "Setup Conduit"}
                                     </DialogTitle>
                                     <a
                                         href="https://github.com/abaveja313/conduit"
@@ -372,7 +395,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                 {step !== "welcome" && (
                                     <DialogDescription>
                                         {step === "directory" && "Select a directory to work with"}
-                                        {step === "provider" && "Choose your AI provider and enter your API key"}
+                                        {step === "provider" && "Choose your AI assistant"}
                                     </DialogDescription>
                                 )}
                             </DialogHeader>
@@ -427,61 +450,126 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                 )}
                                 {step === "provider" && (
                                     <div className="space-y-6">
-                                        <div className="grid gap-2">
-                                            <div className="flex items-center gap-2">
-                                                <label className="text-sm font-medium">AI Provider</label>
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        <p>Using Anthropic Claude models for AI assistance</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </div>
-                                            <div className="bg-muted/50 p-3 rounded-md">
-                                                <p className="text-sm text-muted-foreground">Using Anthropic Claude</p>
-                                            </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {getAvailableModels().map((m) => {
+                                                const Icon = m.icon
+                                                const isSelected = model === m.value
+                                                const isDisabled = m.requiresOwnKey ? !useOwnKey : (m.premium && isUsingInternalKey && !useOwnKey)
+
+                                                return (
+                                                    <motion.button
+                                                        key={m.value}
+                                                        onClick={() => !isDisabled && setModel(m.value)}
+                                                        disabled={isDisabled}
+                                                        whileHover={!isDisabled ? { scale: 1.02 } : {}}
+                                                        whileTap={!isDisabled ? { scale: 0.98 } : {}}
+                                                        className={`
+                                                                relative p-4 rounded-lg border-2 transition-all text-left overflow-visible
+                                                                ${isSelected
+                                                                ? `border-primary bg-gradient-to-br ${m.color} shadow-md`
+                                                                : 'border-muted-foreground/20 hover:border-muted-foreground/40 bg-card/80'
+                                                            }
+                                                                ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                                                            `}
+                                                    >
+                                                        <div className="space-y-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <Icon className={`h-5 w-5 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
+                                                                <h3 className="font-semibold text-sm">
+                                                                    {m.label}
+                                                                </h3>
+                                                            </div>
+
+                                                            <p className="text-xs text-muted-foreground line-clamp-2">
+                                                                {m.description}
+                                                            </p>
+
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {m.features.map((feature, idx) => (
+                                                                    <span
+                                                                        key={idx}
+                                                                        className={`
+                                                                                text-xs px-2 py-0.5 rounded-full border
+                                                                                ${isSelected
+                                                                                ? 'bg-primary/10 text-primary border-primary/20'
+                                                                                : 'bg-muted/50 text-muted-foreground border-muted-foreground/10'
+                                                                            }
+                                                                            `}
+                                                                    >
+                                                                        {feature}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {isSelected && (
+                                                            <motion.div
+                                                                initial={{ scale: 0 }}
+                                                                animate={{ scale: 1 }}
+                                                                className="absolute top-2 right-2 h-5 w-5 rounded-full bg-primary flex items-center justify-center"
+                                                            >
+                                                                <svg className="h-3 w-3 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                </svg>
+                                                            </motion.div>
+                                                        )}
+                                                    </motion.button>
+                                                )
+                                            })}
                                         </div>
 
-                                        <div className="grid gap-2">
-                                            <label htmlFor="apiKey" className="text-sm font-medium">
-                                                Anthropic API Key
-                                            </label>
-                                            <Input
-                                                id="apiKey"
-                                                type="password"
-                                                placeholder="sk-ant-..."
-                                                value={apiKey}
-                                                onChange={(e) => setApiKey(e.target.value)}
-                                            />
-                                        </div>
-
-                                        <div className="grid gap-2">
-                                            <div className="flex items-center gap-2">
-                                                <label htmlFor="model" className="text-sm font-medium">
-                                                    Model
+                                        {!isUsingInternalKey ? (
+                                            <div className="grid gap-2">
+                                                <label htmlFor="apiKey" className="text-sm font-medium">
+                                                    Anthropic API Key
                                                 </label>
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        <p>Choose the AI model to use for this session</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
+                                                <Input
+                                                    id="apiKey"
+                                                    type="password"
+                                                    placeholder="sk-ant-..."
+                                                    value={apiKey}
+                                                    onChange={(e) => setApiKey(e.target.value)}
+                                                />
                                             </div>
-                                            <select
-                                                id="model"
-                                                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                                                value={model}
-                                                onChange={(e) => setModel(e.target.value)}
-                                            >
-                                                {MODELS[provider].map(m => (
-                                                    <option key={m.value} value={m.value}>{m.label}</option>
-                                                ))}
-                                            </select>
-                                        </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {useOwnKey ? "Using Custom API Key" : "✓ Using Conduit's Trial Credits"}
+                                                    </p>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => setUseOwnKey(!useOwnKey)}
+                                                        className="text-xs"
+                                                    >
+                                                        {useOwnKey ? "Use Trial Credits" : "Use Custom Key"}
+                                                    </Button>
+                                                </div>
+
+                                                {useOwnKey && (
+                                                    <div className="space-y-3">
+                                                        <div className="grid gap-2">
+                                                            <label htmlFor="apiKey" className="text-sm font-medium">
+                                                                Anthropic API Key
+                                                            </label>
+                                                            <Input
+                                                                id="apiKey"
+                                                                type="password"
+                                                                placeholder="sk-ant-..."
+                                                                value={apiKey}
+                                                                onChange={(e) => setApiKey(e.target.value)}
+                                                                autoFocus
+                                                            />
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Your API key will be saved locally when you click Start
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -589,17 +677,8 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
 
                                 {step === "welcome" && (
                                     <Button type="button" onClick={handleNext} disabled={!browserSupported}>
-                                        {false ? (
-                                            <>
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                Checking authentication...
-                                            </>
-                                        ) : (
-                                            <>
-                                                Next
-                                                <ChevronRight className="h-4 w-4" />
-                                            </>
-                                        )}
+                                        Next
+                                        <ChevronRight className="h-4 w-4" />
                                     </Button>
                                 )}
 
@@ -639,7 +718,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                     <Button
                                         type="button"
                                         onClick={handleSubmit}
-                                        disabled={!apiKey}
+                                        disabled={(!isUsingInternalKey && !apiKey) || (isUsingInternalKey && useOwnKey && !apiKey)}
                                     >
                                         Start
                                     </Button>

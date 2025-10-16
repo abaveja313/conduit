@@ -68,7 +68,6 @@ impl IndexManager {
         let mut g = self.staged.lock();
 
         if g.is_some() {
-            // noting to do
             return Ok(());
         }
         *g = Some(StagingState {

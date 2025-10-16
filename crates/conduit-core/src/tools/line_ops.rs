@@ -27,13 +27,10 @@ pub enum LineOperation {
 }
 
 /// Apply line operations to text content
-///
-/// Returns: (modified_content, lines_added, lines_removed)
 pub fn apply_line_operations(
     content: &str,
     operations: Vec<LineOperation>,
 ) -> (String, usize, usize) {
-    // Check if original content ends with a newline
     let ends_with_newline = content.ends_with('\n');
 
     let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
@@ -125,7 +122,6 @@ pub fn apply_line_operations(
 
     let mut modified_content = lines.join("\n");
 
-    // Preserve trailing newline if the original had one
     if ends_with_newline && !modified_content.is_empty() {
         modified_content.push('\n');
     }

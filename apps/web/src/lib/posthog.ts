@@ -95,21 +95,13 @@ export interface UserProperties {
     workspace_size?: number;
 }
 
-// Helper to ensure PostHog is initialized
+// Helper to ensure PostHog is available
 const ensurePostHog = (): typeof posthog | null => {
     if (typeof window === 'undefined') return null;
 
-    // Initialize if not already done (fallback for older Next.js versions)
-    if (!posthog.__loaded && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-        posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
-            api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com',
-            person_profiles: 'identified_only',
-            capture_pageview: true,
-            autocapture: true,
-        });
-    }
-
-    return posthog;
+    // PostHog is initialized in instrumentation-client.ts
+    // This just returns the instance if it's available
+    return posthog.__loaded ? posthog : null;
 };
 
 // Core tracking functions
@@ -250,6 +242,7 @@ export const getFeatureFlagPayload = (flagName: string): unknown => {
     return ph.getFeatureFlagPayload(flagName);
 };
 
+
 // Session replay control
 export const startSessionRecording = () => {
     const ph = ensurePostHog();
@@ -273,7 +266,7 @@ export const reset = () => {
     ph.reset();
 };
 
-// Event tracking
+// Legacy compatibility (to replace gtag functions)
 export const trackEvent = (eventName: string, eventParams?: Record<string, unknown>) => {
     const ph = ensurePostHog();
     if (!ph) return;
@@ -345,16 +338,6 @@ export const checkBrowserCompatibility = () => {
             feature: 'WebAssembly',
             userAgent: navigator.userAgent,
             fallbackAvailable: false,
-        });
-    }
-
-    // Check SharedArrayBuffer (needed for some WASM operations)
-    if (!('SharedArrayBuffer' in window)) {
-        issues.push('SharedArrayBuffer');
-        trackBrowserCompatibilityIssue({
-            feature: 'SharedArrayBuffer',
-            userAgent: navigator.userAgent,
-            fallbackAvailable: true,
         });
     }
 

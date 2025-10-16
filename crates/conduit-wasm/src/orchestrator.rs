@@ -145,7 +145,6 @@ impl Orchestrator {
 
         let size = entry.size();
 
-        // Count lines in the new content
         let line_count = if let Some(bytes) = entry.bytes() {
             String::from_utf8_lossy(bytes).lines().count()
         } else {

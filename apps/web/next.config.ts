@@ -17,6 +17,23 @@ const nextConfig: NextConfig = {
     return config;
   },
 
+  async rewrites() {
+    return [
+      {
+        source: '/telemetry-x7f9/static/:path*',
+        destination: 'https://us-assets.i.posthog.com/static/:path*',
+      },
+      {
+        source: '/telemetry-x7f9/decide',
+        destination: 'https://us.i.posthog.com/decide',
+      },
+      {
+        source: '/telemetry-x7f9/:path*',
+        destination: 'https://us.i.posthog.com/:path*',
+      },
+    ];
+  },
+
   async headers() {
     return [
       {

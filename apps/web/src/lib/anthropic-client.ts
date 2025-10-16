@@ -8,12 +8,12 @@ const logger = createLogger('web:anthropic-client');
 
 const SYSTEM_PROMPT = `You are Conduit, an AI-powered file system assistant. You help users navigate, understand, and modify their codebase.
 
-⚠️ CRITICAL RULE - READ FILES BEFORE EDITING:
 ALWAYS call readFile() BEFORE using replaceLines, deleteLines, or insertLines.
 - Line numbers change after EVERY edit - old line numbers become INVALID
 - If you don't read the file first, you WILL edit the wrong lines
 - This applies EVERY SINGLE TIME you want to edit by line number
 - Correct workflow: readFile() → identify current line numbers → then edit
+- Do this after before EVERY edit, not just the first time
 
 Key capabilities:
 - Read files from the STAGED index with line numbers (your working changes, not disk)
@@ -73,7 +73,6 @@ export interface StreamMessage {
   error?: string;
 }
 
-// Helper function to determine the operation type from tool name and args
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getToolOperation(toolName: string, args: unknown): string | undefined {
   switch (toolName) {
@@ -103,7 +102,6 @@ function getToolOperation(toolName: string, args: unknown): string | undefined {
   }
 }
 
-// Helper function to calculate lines affected
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getLinesAffected(toolName: string, args: any, result: any): number | undefined {
   switch (toolName) {
@@ -112,7 +110,6 @@ function getLinesAffected(toolName: string, args: any, result: any): number | un
     case 'deleteLines':
       return args.lineNumbers?.length || 0;
     case 'insertLines':
-      // Count newlines in content
       return (args.content?.match(/\n/g) || []).length + 1;
     case 'readFile':
       return result?.lines?.length || 0;
@@ -139,14 +136,12 @@ function createTools(fileService: FileService): Record<string, any> {
       execute: async (args: any) => {
         await fileService.beginStaging();
 
-        // Start timing the tool execution
         startToolTimer(name);
 
         try {
           const result = await fsTool.execute(args);
           const duration = endToolTimer(name);
 
-          // Track successful tool invocation
           trackToolInvoked({
             toolName: name,
             operation: getToolOperation(name, args),
@@ -163,7 +158,6 @@ function createTools(fileService: FileService): Record<string, any> {
           const duration = endToolTimer(name);
           logger.error(`Tool execution error for ${name}:`, error);
 
-          // Track failed tool invocation
           trackToolInvoked({
             toolName: name,
             operation: getToolOperation(name, args),
@@ -191,9 +185,30 @@ export async function* streamAnthropicResponse(
   try {
     await fileService.beginStaging();
 
+    // Always use proxy for security - never expose API keys in browser
     const anthropic = createAnthropic({
-      apiKey,
-      headers: { 'anthropic-dangerous-direct-browser-access': 'true' }
+      apiKey: 'proxy-placeholder', // Placeholder - actual auth happens via proxy
+      fetch: async (url, options) => {
+        const anthropicUrl = new URL(url.toString());
+
+        const headers = new Headers(options?.headers);
+        headers.set('x-anthropic-path', anthropicUrl.pathname);
+
+        if (apiKey && apiKey.trim()) {
+          headers.set('x-api-key', apiKey);
+        }
+
+        // Include shared secret for API protection
+        const sharedSecret = process.env.NEXT_PUBLIC_SHARED_SECRET;
+        if (sharedSecret) {
+          headers.set('x-shared-secret', sharedSecret);
+        }
+
+        return fetch('/api/anthropic', {
+          ...options,
+          headers,
+        });
+      }
     });
 
     const tools = createTools(fileService);

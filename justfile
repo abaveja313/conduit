@@ -91,6 +91,11 @@ start:
     @echo "Starting web app on http://localhost:3000..."
     cd apps/web && pnpm dev
 
+# Start the web app with Vercel CLI to test Vercel features (rewrites, etc)
+start-vercel:
+    @echo "Starting web app with Vercel CLI on http://localhost:3000..."
+    cd apps/web && pnpm vercel-dev
+
 # Build and start in one command
 start-fresh: prepare start
 

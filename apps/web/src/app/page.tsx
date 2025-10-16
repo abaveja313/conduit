@@ -15,10 +15,10 @@ import { useFileChanges } from "@/hooks/useFileChanges"
 import { formatDuration, formatMemory } from "@/lib/format"
 import { DEFAULT_DIVIDER_POSITION, COMMIT_BANNER_TIMEOUT, STATUS_COLORS } from "@/lib/constants"
 import * as wasm from "@conduit/wasm"
-import { 
-  trackQuerySent, 
-  trackQueryCompleted, 
-  trackChangesCommitted, 
+import {
+  trackQuerySent,
+  trackQueryCompleted,
+  trackChangesCommitted,
   trackChangesReverted,
   trackApiError,
   startQueryTimer,
@@ -394,7 +394,7 @@ export default function Home() {
       messageLength: userMessage.content.length,
       messageIndex: messages.filter(m => m.role === 'user').length + 1
     })
-    
+
     // Start timing the query
     startQueryTimer()
 
@@ -479,7 +479,7 @@ export default function Home() {
             if (event.error) {
               assistantMessage.content += `\n\nError: ${event.error}`
               setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }])
-              
+
               // Track API error
               trackApiError({
                 provider: 'anthropic',
@@ -506,7 +506,7 @@ export default function Home() {
       }
     } catch (error) {
       logger.error('Chat error:', error)
-      
+
       // Track query failure
       const duration = endQueryTimer()
       trackQueryCompleted({
@@ -517,7 +517,7 @@ export default function Home() {
         success: false,
         errorType: error instanceof Error ? error.message : 'Unknown error'
       })
-      
+
       // Track API error if applicable
       if (error instanceof Error) {
         trackApiError({
@@ -527,7 +527,7 @@ export default function Home() {
           model: currentModel
         })
       }
-      
+
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: "assistant",
@@ -748,11 +748,11 @@ export default function Home() {
     if (!fileService) return
 
     const startTime = performance.now()
-    
+
     try {
       const result = await fileService.commitChanges()
       const duration = performance.now() - startTime
-      
+
       logger.info(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`)
 
       // Calculate total lines changed
@@ -762,7 +762,7 @@ export default function Home() {
         totalLinesAdded += change.linesAdded
         totalLinesRemoved += change.linesRemoved
       })
-      
+
       // Track changes committed
       trackChangesCommitted({
         filesModified: result.modified.length,

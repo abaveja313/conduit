@@ -18,5 +18,19 @@
       ]
     }
   ],
+  "rewrites": [
+    {
+      "source": "/telemetry-x7f9/static/(.*)",
+      "destination": "https://us-assets.i.posthog.com/static/$1"
+    },
+    {
+      "source": "/telemetry-x7f9/decide",
+      "destination": "https://us.i.posthog.com/decide"
+    },
+    {
+      "source": "/telemetry-x7f9/(.*)",
+      "destination": "https://us.i.posthog.com/$1"
+    }
+  ],
   "crons": []
 }
