@@ -28,7 +28,7 @@
     "pathe": "^2.0.3",
     "pdfjs-dist": "^5.4.149",
     "picomatch": "^4.0.2",
-    "zod": "^3.23.8"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
