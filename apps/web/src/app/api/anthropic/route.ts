@@ -25,10 +25,17 @@ export async function POST(request: NextRequest) {
 
         const anthropicPath = headers['x-anthropic-path'] || '/v1/messages';
 
-        // Check for user-provided API key first, then fall back to internal
+        // Handle API key - check if it's a placeholder or real user key
         const userApiKey = headers['x-api-key'];
         const internalApiKey = process.env.ANTHROPIC_API_KEY;
-        const apiKey = userApiKey || internalApiKey;
+
+        // If the client sends "proxy-placeholder", use internal key
+        // Otherwise use the provided key if valid, or fall back to internal
+        const isPlaceholder = userApiKey === 'proxy-placeholder';
+        const isValidUserKey = userApiKey && userApiKey !== 'proxy-placeholder' && userApiKey.trim();
+
+        const apiKey = isValidUserKey ? userApiKey : internalApiKey;
+        const usingUserKey = isValidUserKey;
 
         if (!apiKey) {
             logger.error('No API key found (neither user-provided nor internal)');
@@ -43,7 +50,8 @@ export async function POST(request: NextRequest) {
         logger.debug('Proxying request to Anthropic', {
             path: anthropicPath,
             bodyLength: body.length,
-            usingUserKey: !!userApiKey
+            isPlaceholder,
+            usingUserKey
         });
 
         const response = await fetch(anthropicUrl, {

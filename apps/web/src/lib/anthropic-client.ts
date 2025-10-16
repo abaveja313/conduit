@@ -194,15 +194,16 @@ export async function* streamAnthropicResponse(
         const headers = new Headers(options?.headers);
         headers.set('x-anthropic-path', anthropicUrl.pathname);
 
-        // Only include user API key if explicitly provided
+        // Set API key header: use provided key or "proxy-placeholder" for trial users
         if (apiKey && apiKey.trim()) {
           headers.set('x-api-key', apiKey);
           logger.debug('Using user-provided API key');
         } else {
-          logger.debug('No user API key provided, using server-side key');
+          // For trial users, send placeholder that proxy will replace with server-side key
+          headers.set('x-api-key', 'proxy-placeholder');
+          logger.debug('Using trial mode (placeholder key)');
         }
 
-        // Include shared secret for API protection
         const sharedSecret = process.env.NEXT_PUBLIC_SHARED_SECRET;
         if (sharedSecret) {
           headers.set('x-shared-secret', sharedSecret);
