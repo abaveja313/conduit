@@ -233,7 +233,7 @@ export async function* streamAnthropicResponse(
       tools,
       toolChoice: 'auto',
       temperature: 0,
-      stopWhen: stepCountIs(30),
+      stopWhen: stepCountIs(100),
 
       onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
         logger.debug('Step finished:', {
