@@ -62,6 +62,16 @@ pub fn extract_lines(
     end_line: usize,
 ) -> Result<ReadResponse> {
     let line_index = LineIndex::build(content);
+    extract_lines_with_index(path, content, start_line, end_line, &line_index)
+}
+
+pub fn extract_lines_with_index(
+    path: PathKey,
+    content: &[u8],
+    start_line: usize,
+    end_line: usize,
+    line_index: &LineIndex,
+) -> Result<ReadResponse> {
     let total_lines = line_index.line_count();
 
     if start_line == 0 || start_line > total_lines || start_line > end_line {

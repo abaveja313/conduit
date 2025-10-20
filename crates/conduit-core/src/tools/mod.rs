@@ -16,7 +16,7 @@ pub use line_ops::{apply_line_operations, LineOperation};
 pub use matcher::{RegexEngineOpts, RegexMatcher};
 pub use model::{ByteSpan, LineSpan, Match};
 pub use preview::{PreviewBuilder, PreviewHunk};
-pub use read::{extract_lines, ReadRequest, ReadResponse};
+pub use read::{extract_lines, extract_lines_with_index, ReadRequest, ReadResponse};
 pub use replace::{EditOp, ReplacePlan};
 pub use search::{for_each_match, search_regions, MatchRegion};
 pub mod prelude {

@@ -4,8 +4,8 @@ use crate::{current_unix_timestamp, globals::get_index_manager};
 use conduit_core::fs::FileEntry;
 use conduit_core::prelude::*;
 use conduit_core::tools::{
-    apply_line_operations, compute_diff, extract_lines, for_each_match, LineIndex, LineOperation,
-    PreviewBuilder,
+    apply_line_operations, compute_diff, extract_lines_with_index, for_each_match, LineIndex,
+    LineOperation, PreviewBuilder,
 };
 use conduit_core::{MoveFilesTool, RegexMatcher};
 use globset::{Glob, GlobSet, GlobSetBuilder};
@@ -116,7 +116,13 @@ impl Orchestrator {
         let content = entry.search_content().ok_or_else(|| {
             Error::MissingContent(format!("File has no content: {}", path.as_str()))
         })?;
-        extract_lines(path.clone(), content, start_line, end_line)
+
+        let line_index = self
+            .index_manager
+            .get_line_index(path, &index)
+            .ok_or_else(|| Error::FileNotFound(path.as_str().to_string()))?;
+
+        extract_lines_with_index(path.clone(), content, start_line, end_line, &line_index)
     }
 
     pub fn handle_create(&self, req: CreateRequest) -> Result<CreateResponse> {
