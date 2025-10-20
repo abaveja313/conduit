@@ -6,9 +6,10 @@ const logger = createLogger('web:hooks:file-changes')
 
 interface FileChange {
   path: string
-  status: "created" | "modified" | "deleted"
+  status: "created" | "modified" | "deleted" | "moved"
   linesAdded: number
   linesRemoved: number
+  movedTo?: string
   diffRegions?: Array<{
     originalStart: number
     linesRemoved: number

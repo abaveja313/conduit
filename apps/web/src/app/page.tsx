@@ -27,9 +27,10 @@ import {
 
 interface FileChange {
   path: string
-  status: "created" | "modified" | "deleted"
+  status: "created" | "modified" | "deleted" | "moved"
   linesAdded: number
   linesRemoved: number
+  movedTo?: string
   diffRegions?: Array<{
     originalStart: number
     linesRemoved: number
@@ -328,6 +329,7 @@ export default function Home() {
             avgLatency
           })
         } catch {
+          // Silently ignore stats update errors
         }
       }
     }
@@ -492,7 +494,7 @@ export default function Home() {
             }
             break
 
-          case 'done':
+          case 'done': {
             // Track successful query completion
             const duration = endQueryTimer()
             const toolCallsCount = assistantMessage.toolCalls?.length || 0
@@ -504,6 +506,7 @@ export default function Home() {
               success: true
             })
             break
+          }
         }
       }
     } catch (error) {
@@ -1146,7 +1149,12 @@ export default function Home() {
                                     onClick={() => handleToggleExpanded(change.path)}
                                     className="w-full p-3 flex items-center justify-between hover:bg-secondary/50 text-left min-w-0"
                                   >
-                                    <span className="text-sm font-mono truncate flex-1 min-w-0">{change.path}</span>
+                                    <span className="text-sm font-mono truncate flex-1 min-w-0">
+                                      {change.path}
+                                      {change.movedTo && (
+                                        <span className="text-muted-foreground"> → {change.movedTo}</span>
+                                      )}
+                                    </span>
                                     <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                                       {change.linesAdded > 0 && (
                                         <span className="text-xs text-green-500">+{change.linesAdded}</span>

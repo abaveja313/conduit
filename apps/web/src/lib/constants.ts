@@ -12,7 +12,8 @@ export const STATS_UPDATE_INTERVAL = 1000
 export const STATUS_COLORS = {
   created: 'bg-green-500/20 text-green-500',
   modified: 'bg-blue-500/20 text-blue-500',
-  deleted: 'bg-red-500/20 text-red-500'
+  deleted: 'bg-red-500/20 text-red-500',
+  moved: 'bg-purple-500/20 text-purple-500'
 } as const
 
 export const LINE_NUMBER_WIDTH = 4

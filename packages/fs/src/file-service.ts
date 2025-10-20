@@ -339,7 +339,8 @@ export class FileService {
         path: string;
         linesAdded: number;
         linesRemoved: number;
-        status: 'created' | 'modified' | 'deleted';
+        status: 'created' | 'modified' | 'deleted' | 'moved';
+        movedTo?: string;
     }>> {
         await this.ensureWasmInitialized();
 
