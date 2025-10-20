@@ -22,9 +22,9 @@ export interface ModelOption {
 export const MODELS: ModelOption[] = BASE_MODELS.map(model => ({
     ...model,
     icon: model.value.includes('haiku') ? Zap :
-          model.value.includes('opus') ? Crown :
-          model.value === 'claude-sonnet-4-5-20250929' ? Sparkles :
-          Brain
+        model.value.includes('opus') ? Crown :
+            model.value === 'claude-sonnet-4-5-20250929' ? Sparkles :
+                Brain
 }))
 
 interface ModelWithDisabled extends ModelOption {
