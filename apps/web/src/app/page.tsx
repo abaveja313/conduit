@@ -281,13 +281,11 @@ export default function Home() {
     stagedFiles: 0,
     stagedDeletions: 0,
     heapUsed: 0,
-    heapLimit: 0,
-    avgLatency: 0
+    heapLimit: 0
   })
   const [viewMode, setViewMode] = useState<Map<string, 'diff' | 'full'>>(new Map())
   const [fullFileContent, setFullFileContent] = useState<Map<string, React.ReactElement | null>>(new Map())
   const [isInputFocused, setIsInputFocused] = useState(false)
-  const latencies = useRef<number[]>([])
 
   const { fileChanges, expanded, updateFileChanges, toggleExpanded, setFileChanges, clearExpanded } = useFileChanges(fileService)
 
@@ -296,7 +294,12 @@ export default function Home() {
       try {
         await wasm.default()
         wasm.init()
-        logger.info('WASM initialized')
+
+        // Expose WASM to window for debugging
+        if (typeof window !== 'undefined') {
+          (window as unknown as { wasm: typeof wasm }).wasm = wasm
+          logger.info('WASM initialized and exposed to window.wasm')
+        }
       } catch (err) {
         logger.error('Failed to initialize WASM:', err)
       }
@@ -304,19 +307,6 @@ export default function Home() {
     initWasm()
   }, [])
 
-  useEffect(() => {
-    const lastMessage = messages[messages.length - 1]
-    if (lastMessage?.role === 'assistant' && lastMessage.toolCalls) {
-      lastMessage.toolCalls.forEach(tc => {
-        if (tc.duration && tc.duration > 0 && !latencies.current.includes(tc.duration)) {
-          latencies.current.push(tc.duration)
-          if (latencies.current.length > 50) {
-            latencies.current.shift()
-          }
-        }
-      })
-    }
-  }, [messages])
 
   useEffect(() => {
     const updateStats = async () => {
@@ -333,18 +323,12 @@ export default function Home() {
           const heapUsed = memory?.usedJSHeapSize || 0
           const heapLimit = memory?.jsHeapSizeLimit || 0
 
-          const recentLatencies = latencies.current.slice(-20)
-          const avgLatency = recentLatencies.length > 0
-            ? recentLatencies.reduce((a, b) => a + b, 0) / recentLatencies.length
-            : 0
-
           setSystemStats({
             fileCount: fileService.fileCount,
             stagedFiles: mods.length,
             stagedDeletions: dels.length,
             heapUsed,
-            heapLimit,
-            avgLatency
+            heapLimit
           })
         } catch {
           // Silently ignore stats update errors
@@ -1303,9 +1287,6 @@ export default function Home() {
                 )}
                 {systemStats.heapUsed > 0 && (
                   <span>heap: {formatMemory(systemStats.heapUsed)} / {formatMemory(systemStats.heapLimit)}</span>
-                )}
-                {systemStats.avgLatency > 0 && (
-                  <span>avg: {formatDuration(systemStats.avgLatency)}</span>
                 )}
               </div>
               <div className="text-muted-foreground">

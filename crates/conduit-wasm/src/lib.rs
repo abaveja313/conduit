@@ -67,6 +67,26 @@ pub fn clear_index() -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn reset_all_indices() -> Result<(), JsValue> {
+    use crate::globals::get_index_manager;
+
+    let manager = get_index_manager();
+
+    // Clear any staged changes first
+    let _ = manager.revert_staged();
+
+    // Clear line index cache
+    manager.clear_line_index_cache();
+
+    // Load empty file list to reset the active index
+    manager
+        .load_files(vec![])
+        .map_err(|e| js_err!("Failed to reset indices: {}", e))?;
+
+    Ok(())
+}
+
+#[wasm_bindgen]
 pub fn begin_file_load() -> Result<(), JsValue> {
     use crate::globals::get_index_manager;
 

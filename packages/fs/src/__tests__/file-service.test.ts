@@ -15,6 +15,13 @@ vi.mock('@conduit/wasm', () => ({
     search_files: vi.fn(),
     delete_file: vi.fn(),
     create_file: vi.fn(),
+    get_staged_modifications_with_active: vi.fn(),
+    get_staged_deletions: vi.fn(),
+    get_staged_moves: vi.fn(),
+    validate_can_edit_lines: vi.fn(),
+    record_file_read: vi.fn(),
+    mark_file_needs_read: vi.fn(),
+    check_file_needs_read: vi.fn(),
 }));
 
 interface MockFileManager {
@@ -38,6 +45,10 @@ describe('FileService - Move File Handling', () => {
 
         vi.mocked(wasm.is_initialized).mockReturnValue(true);
         vi.mocked(wasm.begin_index_staging).mockImplementation(() => undefined);
+        vi.mocked(wasm.get_staged_modifications_with_active).mockReturnValue([]);
+        vi.mocked(wasm.get_staged_deletions).mockReturnValue([]);
+        vi.mocked(wasm.get_staged_moves).mockReturnValue({});
+        vi.mocked(wasm.validate_can_edit_lines).mockReturnValue(true);
 
         fileService = new FileService();
         const fs = fileService as { fileManager: MockFileManager; wasmInitialized: boolean };
@@ -47,10 +58,15 @@ describe('FileService - Move File Handling', () => {
 
     describe('commitChanges', () => {
         it('should skip deletion for files created and moved in staging (never existed on disk)', async () => {
+            vi.mocked(wasm.get_staged_modifications_with_active).mockReturnValue([{
+                path: 'new-location.txt',
+                stagedContent: new Uint8Array([72, 101, 108, 108, 111]),
+            }]);
+
+            vi.mocked(wasm.get_staged_deletions).mockReturnValue(['old-location.txt']);
+
             vi.mocked(wasm.commit_index_staging).mockReturnValue({
-                fileCount: 1,
-                modified: [{ path: 'new-location.txt', content: new Uint8Array([72, 101, 108, 108, 111]) }],
-                deleted: ['old-location.txt'],
+                fileCount: 1
             });
 
             mockFileManager.getMetadata.mockImplementation((path: string) => {
@@ -73,10 +89,15 @@ describe('FileService - Move File Handling', () => {
         });
 
         it('should delete source file when existing file is renamed', async () => {
+            vi.mocked(wasm.get_staged_modifications_with_active).mockReturnValue([{
+                path: 'renamed.txt',
+                stagedContent: new Uint8Array([72, 105]),
+            }]);
+
+            vi.mocked(wasm.get_staged_deletions).mockReturnValue(['original.txt']);
+
             vi.mocked(wasm.commit_index_staging).mockReturnValue({
-                fileCount: 2,
-                modified: [{ path: 'renamed.txt', content: new Uint8Array([72, 105]) }],
-                deleted: ['original.txt'],
+                fileCount: 2
             });
 
             mockFileManager.getMetadata.mockImplementation((path: string) => {
@@ -90,10 +111,15 @@ describe('FileService - Move File Handling', () => {
         });
 
         it('should handle multiple moves (A→B→C) by only writing final destination', async () => {
+            vi.mocked(wasm.get_staged_modifications_with_active).mockReturnValue([{
+                path: 'final.txt',
+                stagedContent: new Uint8Array([65]),
+            }]);
+
+            vi.mocked(wasm.get_staged_deletions).mockReturnValue(['first.txt', 'second.txt']);
+
             vi.mocked(wasm.commit_index_staging).mockReturnValue({
-                fileCount: 1,
-                modified: [{ path: 'final.txt', content: new Uint8Array([65]) }],
-                deleted: ['first.txt', 'second.txt'],
+                fileCount: 1
             });
 
             mockFileManager.getMetadata.mockImplementation((path: string) => {
@@ -115,10 +141,15 @@ describe('FileService - Move File Handling', () => {
         it('should handle move with modification', async () => {
             const modifiedContent = new Uint8Array([77, 111, 100]);
 
+            vi.mocked(wasm.get_staged_modifications_with_active).mockReturnValue([{
+                path: 'moved.txt',
+                stagedContent: modifiedContent,
+            }]);
+
+            vi.mocked(wasm.get_staged_deletions).mockReturnValue(['original.txt']);
+
             vi.mocked(wasm.commit_index_staging).mockReturnValue({
-                fileCount: 2,
-                modified: [{ path: 'moved.txt', content: modifiedContent }],
-                deleted: ['original.txt'],
+                fileCount: 2
             });
 
             mockFileManager.getMetadata.mockImplementation((path: string) => {
@@ -140,10 +171,12 @@ describe('FileService - Move File Handling', () => {
         });
 
         it('should handle deletion errors gracefully', async () => {
+            vi.mocked(wasm.get_staged_modifications_with_active).mockReturnValue([]);
+
+            vi.mocked(wasm.get_staged_deletions).mockReturnValue(['to-delete.txt']);
+
             vi.mocked(wasm.commit_index_staging).mockReturnValue({
-                fileCount: 1,
-                modified: [],
-                deleted: ['to-delete.txt'],
+                fileCount: 1
             });
 
             mockFileManager.getMetadata.mockReturnValue({ path: 'to-delete.txt', handle: {} });
@@ -153,13 +186,15 @@ describe('FileService - Move File Handling', () => {
         });
 
         it('should handle mixed operations: create, move, and delete', async () => {
+            vi.mocked(wasm.get_staged_modifications_with_active).mockReturnValue([
+                { path: 'new-file.txt', stagedContent: new Uint8Array([78]) },
+                { path: 'renamed-file.txt', stagedContent: new Uint8Array([82]) },
+            ]);
+
+            vi.mocked(wasm.get_staged_deletions).mockReturnValue(['old-file.txt', 'deleted-file.txt']);
+
             vi.mocked(wasm.commit_index_staging).mockReturnValue({
-                fileCount: 3,
-                modified: [
-                    { path: 'new-file.txt', content: new Uint8Array([78]) },
-                    { path: 'renamed-file.txt', content: new Uint8Array([82]) },
-                ],
-                deleted: ['old-file.txt', 'deleted-file.txt'],
+                fileCount: 3
             });
 
             mockFileManager.getMetadata.mockImplementation((path: string) => {

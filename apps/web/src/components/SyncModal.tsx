@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, CheckCircle2, Zap, Activity, Clock } from "lucide-react"
+import { Loader2, CheckCircle2, Zap, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface SyncModalProps {
@@ -10,7 +10,6 @@ interface SyncModalProps {
     total: number
     phase: 'preparing' | 'persisting' | 'finalizing' | 'complete'
     duration?: number
-    avgLatency?: number
   }
   onClose?: () => void
 }
@@ -34,7 +33,7 @@ export function SyncModal({ isVisible, progress, onClose }: SyncModalProps) {
 
               <h2 className="text-2xl font-bold mb-6">Sync Complete</h2>
 
-              <div className="grid grid-cols-3 gap-4 w-full mb-6">
+              <div className="grid grid-cols-2 gap-4 w-full mb-6">
                 <div className="bg-secondary/50 rounded-lg p-3">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <Zap className="h-4 w-4 text-yellow-500" />
@@ -50,16 +49,6 @@ export function SyncModal({ isVisible, progress, onClose }: SyncModalProps) {
                   <p className="text-xs text-muted-foreground mb-1">Duration</p>
                   <p className="text-lg font-semibold">
                     {progress.duration ? `${(progress.duration / 1000).toFixed(2)}s` : '-'}
-                  </p>
-                </div>
-
-                <div className="bg-secondary/50 rounded-lg p-3">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Activity className="h-4 w-4 text-green-500" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-1">Latency</p>
-                  <p className="text-lg font-semibold">
-                    {progress.avgLatency ? `${Math.round(progress.avgLatency * 1000)}µs` : '-'}
                   </p>
                 </div>
               </div>

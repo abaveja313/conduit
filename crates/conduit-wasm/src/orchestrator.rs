@@ -122,7 +122,14 @@ impl Orchestrator {
             .get_line_index(path, &index)
             .ok_or_else(|| Error::FileNotFound(path.as_str().to_string()))?;
 
-        extract_lines_with_index(path.clone(), content, start_line, end_line, &line_index)
+        let result =
+            extract_lines_with_index(path.clone(), content, start_line, end_line, &line_index)?;
+
+        if where_ == SearchSpace::Staged {
+            self.index_manager.clear_needs_read(path)?;
+        }
+
+        Ok(result)
     }
 
     pub fn handle_create(&self, req: CreateRequest) -> Result<CreateResponse> {
@@ -218,6 +225,10 @@ impl Orchestrator {
                 .update_line_stats(dst, line_count as isize, 0, line_count)?;
         }
 
+        if self.index_manager.check_needs_read(src)? {
+            self.index_manager.mark_needs_read(dst)?;
+        }
+
         Ok(())
     }
 
@@ -306,6 +317,7 @@ impl Orchestrator {
                 lines_removed as isize,
                 total_lines,
             )?;
+            self.index_manager.mark_needs_read(&req.path)?;
 
             Ok(ReplaceLinesResponse {
                 path: req.path,
@@ -355,6 +367,7 @@ impl Orchestrator {
                 lines_removed as isize,
                 total_lines,
             )?;
+            self.index_manager.mark_needs_read(&req.path)?;
 
             Ok(ReplaceLinesResponse {
                 path: req.path,
@@ -397,6 +410,7 @@ impl Orchestrator {
                 lines_removed as isize,
                 total_lines,
             )?;
+            self.index_manager.mark_needs_read(&req.path)?;
 
             Ok(ReplaceLinesResponse {
                 path: req.path,

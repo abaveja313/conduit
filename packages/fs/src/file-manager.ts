@@ -47,7 +47,7 @@ export class FileManager {
     Omit<FileManagerConfig, 'onProgress' | 'onScanProgress' | 'onDocumentExtractionProgress'>
   > = {
       concurrency: getOptimalConcurrency(),
-      batchSize: 1000,
+      batchSize: 50,
     };
 
   private readonly config: FileManagerConfig;
@@ -237,7 +237,6 @@ export class FileManager {
 
     logger.info(`Found ${documentPaths.length} documents to extract`);
     let extractedCount = 0;
-    const extractionStartTime = performance.now();
 
     for (let i = 0; i < documentPaths.length; i += 10) {
       const batch = documentPaths.slice(i, i + 10);
@@ -307,8 +306,7 @@ export class FileManager {
       await new Promise(resolve => setTimeout(resolve, 0));
     }
 
-    const extractionDuration = performance.now() - extractionStartTime;
-    logger.info(`Document extraction completed in ${extractionDuration.toFixed(0)}ms`);
+    logger.info(`Document extraction completed`);
 
     return extractedCount;
   }
@@ -406,7 +404,6 @@ export class FileManager {
             const permissions = validPaths.map(
               (p) => this.metadata.get(p)?.editable !== false
             );
-
 
             if (!Array.isArray(normalizedPaths) || !Array.isArray(contents) || !Array.isArray(timestamps) || !Array.isArray(permissions)) {
               logger.error('Invalid batch data - not arrays:', {

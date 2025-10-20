@@ -219,8 +219,16 @@ export function SetupModal({ open, onComplete, initialModel }: SetupModalProps) 
         }
     }
 
-    const handleBack = () => {
+    const handleBack = async () => {
         if (step === "provider") {
+            // Reset WASM indices when going back to directory selection
+            try {
+                await wasm.reset_all_indices()
+                logger.info('Reset WASM indices')
+            } catch (error) {
+                logger.error('Failed to reset indices:', error)
+            }
+
             setStep("directory")
             setHasScanned(false)
             setScanStats(null)

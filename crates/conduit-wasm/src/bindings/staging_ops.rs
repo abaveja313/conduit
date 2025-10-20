@@ -66,13 +66,14 @@ pub fn add_files_to_staging(
         let original_bytes = contents[i].to_vec();
         let is_editable = permissions[i].value_of();
 
-        let search_content = if is_editable {
-            text_contents
-                .as_ref()
-                .map(|texts| texts[i].as_bytes().to_vec())
-        } else {
-            None
-        };
+        let search_content = text_contents.as_ref().and_then(|texts| {
+            let text = &texts[i];
+            if text.is_empty() {
+                None // Skip empty text content
+            } else {
+                Some(text.as_bytes().to_vec())
+            }
+        });
 
         let timestamp = (mtimes[i] / 1000.0).floor() as i64;
         let ext = FileEntry::get_extension(path_key.as_str());

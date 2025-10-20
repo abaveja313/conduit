@@ -1,5 +1,5 @@
 use arc_swap::ArcSwap;
-use im::OrdSet as IOrdSet;
+use im::{HashSet as IHashSet, OrdSet as IOrdSet};
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -17,6 +17,8 @@ pub struct StagingState {
     change_stats: im::HashMap<PathKey, FileChangeStats>,
     /// Track move operations: source -> destination
     moves: im::HashMap<PathKey, PathKey>,
+    /// Track files that need to be read before line-based edits
+    needs_read: im::HashSet<PathKey>,
 }
 
 /// Statistics about changes to a file
@@ -72,11 +74,21 @@ impl IndexManager {
         if g.is_some() {
             return Ok(());
         }
+
+        let snapshot = self.active.load_full();
+        let mut needs_read = IHashSet::new();
+
+        // Mark all existing files as needs_read
+        for (path, _) in snapshot.iter_sorted() {
+            needs_read.insert(path.clone());
+        }
+
         *g = Some(StagingState {
-            snapshot: self.active.load_full(),
+            snapshot,
             modified: IOrdSet::new(),
             change_stats: im::HashMap::new(),
             moves: im::HashMap::new(),
+            needs_read,
         });
         Ok(())
     }
@@ -90,6 +102,7 @@ impl IndexManager {
         let idx = Arc::make_mut(&mut staged.snapshot); // split on first write
 
         staged.modified.insert(key.clone());
+        staged.needs_read.insert(key.clone());
         idx.upsert_file(key, entry)?;
         Ok(())
     }
@@ -136,6 +149,7 @@ impl IndexManager {
         let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
         let idx = Arc::make_mut(&mut staged.snapshot);
         staged.modified.insert(key.clone());
+        staged.needs_read.remove(key);
         let _ = idx.remove_file(key)?;
         Ok(())
     }
@@ -154,6 +168,11 @@ impl IndexManager {
         staged.modified.insert(src.clone());
         staged.modified.insert(dst.clone());
         staged.moves.insert(src.clone(), dst.clone());
+
+        if staged.needs_read.contains(src) {
+            staged.needs_read.remove(src);
+            staged.needs_read.insert(dst.clone());
+        }
 
         idx.upsert_file(dst.clone(), entry)?;
 
@@ -292,7 +311,8 @@ impl IndexManager {
     /// Get or compute LineIndex for a file
     pub fn get_line_index(&self, path: &PathKey, index: &Index) -> Option<Arc<LineIndex>> {
         let entry = index.get_file(path)?;
-        let bytes = entry.bytes()?;
+        // Use search_content() to match what handle_read uses
+        let content = entry.search_content()?;
         let mtime = entry.mtime();
 
         // Check cache first
@@ -305,7 +325,7 @@ impl IndexManager {
         }
 
         // Not in cache, compute it
-        let line_index = Arc::new(LineIndex::build(bytes));
+        let line_index = Arc::new(LineIndex::build(content));
 
         {
             let mut cache = self.line_index_cache.write();
@@ -347,5 +367,40 @@ impl IndexManager {
                 Err(e)
             }
         }
+    }
+
+    /// Mark a file as needing to be read before line-based edits.
+    pub fn mark_needs_read(&self, key: &PathKey) -> Result<()> {
+        let mut g = self.staged.lock();
+        let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
+        staged.needs_read.insert(key.clone());
+        Ok(())
+    }
+
+    /// Clear the needs_read flag for a file after it has been read.
+    pub fn clear_needs_read(&self, key: &PathKey) -> Result<()> {
+        let mut g = self.staged.lock();
+        let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
+        staged.needs_read.remove(key);
+        Ok(())
+    }
+
+    /// Check if a file needs to be read before line-based edits.
+    pub fn check_needs_read(&self, key: &PathKey) -> Result<bool> {
+        let g = self.staged.lock();
+        let staged = g.as_ref().ok_or(Error::StagingNotActive)?;
+        Ok(staged.needs_read.contains(key))
+    }
+
+    /// Transfer needs_read state from source to destination during move operations.
+    pub fn transfer_needs_read(&self, src: &PathKey, dst: &PathKey) -> Result<()> {
+        let mut g = self.staged.lock();
+        let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
+
+        if staged.needs_read.contains(src) {
+            staged.needs_read.remove(src);
+            staged.needs_read.insert(dst.clone());
+        }
+        Ok(())
     }
 }

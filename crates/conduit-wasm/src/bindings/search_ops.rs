@@ -45,7 +45,7 @@ pub fn search_files(
             case_insensitive: !case_sensitive,
             multiline: true,
             dot_all: false,
-            crlf: true,
+            crlf: false, // Use LF line endings (Unix/Mac) instead of CRLF (Windows)
             word: whole_word,
             unicode: true,
         },

@@ -57,6 +57,9 @@ pub enum Error {
 
     #[error("file is not editable: {0}")]
     ReadOnlyFile(String),
+
+    #[error("file needs to be read before editing: {0}")]
+    FileNeedsRead(String),
 }
 
 impl SinkError for Error {

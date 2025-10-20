@@ -114,7 +114,6 @@ export type MoveFilesParams = z.infer<typeof moveFilesSchema>;
 export class FileService {
     private fileManager: FileManager;
     private wasmInitialized = false;
-    private lastFileOperations = new Map<string, string>();
 
     constructor(config?: FileManagerConfig) {
         this.fileManager = new FileManager(config);
@@ -167,7 +166,7 @@ export class FileService {
                 return { [lineNum]: content };
             });
 
-            this.lastFileOperations.set(normalizedPath, 'read');
+            wasm.record_file_read(normalizedPath);
 
             return {
                 path: normalizedPath,
@@ -423,7 +422,7 @@ export class FileService {
         await this.ensureWasmInitialized();
 
         const normalizedPath = normalizePath(validated.path);
-        if (this.lastFileOperations.get(normalizedPath) !== 'read') {
+        if (!wasm.validate_can_edit_lines(normalizedPath)) {
             throw new Error(
                 `Cannot replace lines in '${validated.path}' without reading the file first. ` +
                 `Call readFile() before using replaceLines() to ensure line numbers are accurate.`
@@ -460,7 +459,7 @@ export class FileService {
         await this.ensureWasmInitialized();
 
         const normalizedPath = normalizePath(validated.path);
-        if (this.lastFileOperations.get(normalizedPath) !== 'read') {
+        if (!wasm.validate_can_edit_lines(normalizedPath)) {
             throw new Error(
                 `Cannot delete lines in '${validated.path}' without reading the file first. ` +
                 `Call readFile() before using deleteLines() to ensure line numbers are accurate.`
@@ -494,7 +493,7 @@ export class FileService {
         await this.ensureWasmInitialized();
 
         const normalizedPath = normalizePath(validated.path);
-        if (this.lastFileOperations.get(normalizedPath) !== 'read') {
+        if (!wasm.validate_can_edit_lines(normalizedPath)) {
             throw new Error(
                 `Cannot insert lines in '${validated.path}' without reading the file first. ` +
                 `Call readFile() before using insertLines() to ensure line numbers are accurate.`
@@ -555,7 +554,6 @@ export class FileService {
 
         try {
             wasm.begin_index_staging();
-            this.lastFileOperations.clear();
         } catch (error) {
             throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
                 operation: 'begin_staging'
@@ -570,18 +568,31 @@ export class FileService {
         await this.ensureWasmInitialized();
 
         try {
-            const result = wasm.commit_index_staging() as {
+            // Get modifications and deletions before committing
+            const modifications = wasm.get_staged_modifications_with_active() as Array<{
+                path: string;
+                stagedContent: Uint8Array;
+                activeContent?: Uint8Array;
+            }>;
+
+            const deletions = wasm.get_staged_deletions() as string[];
+
+            // Now commit the staged index
+            const commitResult = wasm.commit_index_staging() as {
                 fileCount: number;
-                modified: Array<{ path: string; content: Uint8Array }>;
-                deleted: string[];
             };
 
-            const hasModifications = result.modified.length > 0;
-            const hasDeletions = result.deleted.length > 0;
+            const modifiedFiles = modifications.map(mod => ({
+                path: mod.path,
+                content: mod.stagedContent
+            }));
+
+            const hasModifications = modifiedFiles.length > 0;
+            const hasDeletions = deletions.length > 0;
 
             const operations = await Promise.all([
-                hasModifications ? this.fileManager.writeModifiedFiles(result.modified) : Promise.resolve(0),
-                hasDeletions ? this.processDeletions(result.deleted) : Promise.resolve({ succeeded: 0, failed: 0 })
+                hasModifications ? this.fileManager.writeModifiedFiles(modifiedFiles) : Promise.resolve(0),
+                hasDeletions ? this.processDeletions(deletions) : Promise.resolve({ succeeded: 0, failed: 0 })
             ]);
 
             const [writtenCount, deletionStats] = operations;
@@ -594,15 +605,14 @@ export class FileService {
                 logger.debug(`Deletions: ${deletionStats.succeeded} succeeded, ${deletionStats.failed} failed`);
             }
 
-            this.lastFileOperations.clear();
 
             return {
-                fileCount: result.fileCount,
-                modified: result.modified.map(file => ({
+                fileCount: commitResult.fileCount,
+                modified: modifiedFiles.map(file => ({
                     path: file.path,
                     content: decodeText(file.content)
                 })),
-                deleted: result.deleted
+                deleted: deletions
             };
         } catch (error) {
             throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
@@ -665,7 +675,6 @@ export class FileService {
 
         try {
             wasm.revert_index_staging();
-            this.lastFileOperations.clear();
         } catch (error) {
             throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
                 operation: 'revert_changes'

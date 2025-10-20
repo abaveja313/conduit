@@ -166,7 +166,7 @@ function debugString(val) {
         // easier than looping through ownProperties of `val`.
         try {
             return 'Object(' + JSON.stringify(val) + ')';
-        } catch (_) {
+        } catch {
             return 'Object';
         }
     }
@@ -420,94 +420,6 @@ export function check_file_needs_read(path) {
 
 /**
  * @param {string} path
- * @param {Uint8Array | null | undefined} content
- * @param {boolean} allow_overwrite
- * @returns {any}
- */
-export function create_index_file(path, content, allow_overwrite) {
-    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.create_index_file(ptr0, len0, isLikeNone(content) ? 0 : addToExternrefTable0(content), allow_overwrite);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * @param {string} path
- * @returns {any}
- */
-export function delete_file(path) {
-    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.delete_file(ptr0, len0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * @param {string} src
- * @param {string} dst
- * @returns {any}
- */
-export function copy_file(src, dst) {
-    const ptr0 = passStringToWasm0(src, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(dst, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.copy_file(ptr0, len0, ptr1, len1);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * @param {Array<any>} operations
- * @returns {any}
- */
-export function copy_files(operations) {
-    const ret = wasm.copy_files(operations);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * @param {string} src
- * @param {string} dst
- * @returns {any}
- */
-export function move_file(src, dst) {
-    const ptr0 = passStringToWasm0(src, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(dst, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.move_file(ptr0, len0, ptr1, len1);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * @param {Array<any>} operations
- * @returns {any}
- */
-export function move_files(operations) {
-    const ret = wasm.move_files(operations);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * @param {string} path
  * @param {boolean} use_staged
  * @returns {any}
  */
@@ -631,6 +543,142 @@ export function insert_lines(path, insertions, _use_staged) {
     const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ret = wasm.insert_lines(ptr0, len0, insertions, _use_staged);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string} path
+ * @param {Uint8Array | null | undefined} content
+ * @param {boolean} allow_overwrite
+ * @returns {any}
+ */
+export function create_index_file(path, content, allow_overwrite) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.create_index_file(ptr0, len0, isLikeNone(content) ? 0 : addToExternrefTable0(content), allow_overwrite);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string} path
+ * @returns {any}
+ */
+export function delete_file(path) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.delete_file(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string} src
+ * @param {string} dst
+ * @returns {any}
+ */
+export function copy_file(src, dst) {
+    const ptr0 = passStringToWasm0(src, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(dst, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.copy_file(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {Array<any>} operations
+ * @returns {any}
+ */
+export function copy_files(operations) {
+    const ret = wasm.copy_files(operations);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string} src
+ * @param {string} dst
+ * @returns {any}
+ */
+export function move_file(src, dst) {
+    const ptr0 = passStringToWasm0(src, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(dst, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.move_file(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {Array<any>} operations
+ * @returns {any}
+ */
+export function move_files(operations) {
+    const ret = wasm.move_files(operations);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string} search_term
+ * @param {string | null} [path_prefix]
+ * @param {string | null} [include_pattern]
+ * @param {string | null} [exclude_pattern]
+ * @param {boolean | null} [case_sensitive]
+ * @param {boolean | null} [whole_word]
+ * @param {boolean | null} [use_staged]
+ * @param {number | null} [context_lines]
+ * @param {number | null} [limit]
+ * @returns {any}
+ */
+export function search_files(search_term, path_prefix, include_pattern, exclude_pattern, case_sensitive, whole_word, use_staged, context_lines, limit) {
+    const ptr0 = passStringToWasm0(search_term, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(path_prefix) ? 0 : passStringToWasm0(path_prefix, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(include_pattern) ? 0 : passStringToWasm0(include_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    var ptr3 = isLikeNone(exclude_pattern) ? 0 : passStringToWasm0(exclude_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len3 = WASM_VECTOR_LEN;
+    const ret = wasm.search_files(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, isLikeNone(case_sensitive) ? 0xFFFFFF : case_sensitive ? 1 : 0, isLikeNone(whole_word) ? 0xFFFFFF : whole_word ? 1 : 0, isLikeNone(use_staged) ? 0xFFFFFF : use_staged ? 1 : 0, isLikeNone(context_lines) ? 0x100000001 : (context_lines) >>> 0, isLikeNone(limit) ? 0x100000001 : (limit) >>> 0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string | null} [path_prefix]
+ * @param {string | null} [glob_pattern]
+ * @param {boolean | null} [use_staged]
+ * @param {number | null} [limit]
+ * @param {number | null} [offset]
+ * @returns {any}
+ */
+export function list_files_from_wasm(path_prefix, glob_pattern, use_staged, limit, offset) {
+    var ptr0 = isLikeNone(path_prefix) ? 0 : passStringToWasm0(path_prefix, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(glob_pattern) ? 0 : passStringToWasm0(glob_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.list_files_from_wasm(ptr0, len0, ptr1, len1, isLikeNone(use_staged) ? 0xFFFFFF : use_staged ? 1 : 0, isLikeNone(limit) ? 0x100000001 : (limit) >>> 0, isLikeNone(offset) ? 0x100000001 : (offset) >>> 0);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -774,54 +822,6 @@ export function commit_file_load() {
     return ret[0] >>> 0;
 }
 
-/**
- * @param {string} search_term
- * @param {string | null} [path_prefix]
- * @param {string | null} [include_pattern]
- * @param {string | null} [exclude_pattern]
- * @param {boolean | null} [case_sensitive]
- * @param {boolean | null} [whole_word]
- * @param {boolean | null} [use_staged]
- * @param {number | null} [context_lines]
- * @param {number | null} [limit]
- * @returns {any}
- */
-export function search_files(search_term, path_prefix, include_pattern, exclude_pattern, case_sensitive, whole_word, use_staged, context_lines, limit) {
-    const ptr0 = passStringToWasm0(search_term, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    var ptr1 = isLikeNone(path_prefix) ? 0 : passStringToWasm0(path_prefix, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len1 = WASM_VECTOR_LEN;
-    var ptr2 = isLikeNone(include_pattern) ? 0 : passStringToWasm0(include_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len2 = WASM_VECTOR_LEN;
-    var ptr3 = isLikeNone(exclude_pattern) ? 0 : passStringToWasm0(exclude_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len3 = WASM_VECTOR_LEN;
-    const ret = wasm.search_files(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, isLikeNone(case_sensitive) ? 0xFFFFFF : case_sensitive ? 1 : 0, isLikeNone(whole_word) ? 0xFFFFFF : whole_word ? 1 : 0, isLikeNone(use_staged) ? 0xFFFFFF : use_staged ? 1 : 0, isLikeNone(context_lines) ? 0x100000001 : (context_lines) >>> 0, isLikeNone(limit) ? 0x100000001 : (limit) >>> 0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * @param {string | null} [path_prefix]
- * @param {string | null} [glob_pattern]
- * @param {boolean | null} [use_staged]
- * @param {number | null} [limit]
- * @param {number | null} [offset]
- * @returns {any}
- */
-export function list_files_from_wasm(path_prefix, glob_pattern, use_staged, limit, offset) {
-    var ptr0 = isLikeNone(path_prefix) ? 0 : passStringToWasm0(path_prefix, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len0 = WASM_VECTOR_LEN;
-    var ptr1 = isLikeNone(glob_pattern) ? 0 : passStringToWasm0(glob_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.list_files_from_wasm(ptr0, len0, ptr1, len1, isLikeNone(use_staged) ? 0xFFFFFF : use_staged ? 1 : 0, isLikeNone(limit) ? 0x100000001 : (limit) >>> 0, isLikeNone(offset) ? 0x100000001 : (offset) >>> 0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
 const EXPECTED_RESPONSE_TYPES = new Set(['basic', 'cors', 'default']);
 
 async function __wbg_load(module, imports) {
@@ -883,7 +883,7 @@ function __wbg_get_imports() {
         let result;
         try {
             result = arg0 instanceof Object;
-        } catch (_) {
+        } catch {
             result = false;
         }
         const ret = result;
@@ -906,7 +906,7 @@ function __wbg_get_imports() {
         return ret;
     };
     imports.wbg.__wbg_new_1f3a344cf3123716 = function() {
-        const ret = new Array();
+        const ret = [];
         return ret;
     };
     imports.wbg.__wbg_new_8a6f238a6ece86ea = function() {
@@ -991,7 +991,8 @@ function __wbg_get_imports() {
     return imports;
 }
 
-function __wbg_init_memory(imports, memory) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function __wbg_init_memory(_imports, _memory) {
 
 }
 

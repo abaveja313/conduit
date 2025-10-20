@@ -410,6 +410,38 @@ export function move_files(operations: Array<{ src: string; dst: string }>): {
 };
 
 /**
+ * Validates whether a file can be edited with line-based operations.
+ * @param path - File path to validate
+ * @returns true if the file can be edited, false if it needs to be read first
+ * @throws {Error} If validation fails
+ */
+export function validate_can_edit_lines(path: string): boolean;
+
+/**
+ * Records that a file has been read, clearing its needs_read flag.
+ * Should be called after successfully reading a file's content.
+ * @param path - File path that was read
+ * @throws {Error} If clearing the flag fails
+ */
+export function record_file_read(path: string): void;
+
+/**
+ * Marks a file as needing to be read before line-based edits.
+ * This is typically called after line-based edit operations.
+ * @param path - File path to mark
+ * @throws {Error} If marking fails
+ */
+export function mark_file_needs_read(path: string): void;
+
+/**
+ * Checks if a file needs to be read before line-based edits.
+ * @param path - File path to check
+ * @returns true if the file needs to be read, false otherwise
+ * @throws {Error} If check fails
+ */
+export function check_file_needs_read(path: string): boolean;
+
+/**
  * Default export for initializing the WASM module
  */
 export default function init(
