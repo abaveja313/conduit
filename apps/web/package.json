@@ -57,6 +57,7 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vercel": "^48.3.0",
-    "vitest": "^2.1.9"
+    "vite": "^7.1.11",
+    "vitest": "^1.6.1"
   }
 }

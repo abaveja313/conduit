@@ -3,10 +3,28 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react({
+      babel: {
+        plugins: [
+          ['@babel/plugin-transform-react-jsx', { runtime: 'automatic' }],
+        ],
+      },
+    }),
+    {
+      name: 'remove-use-client',
+      transform(code, id) {
+        if (id.includes('node_modules')) return;
+        if (id.endsWith('.tsx') || id.endsWith('.ts')) {
+          return code.replace(/^['"]use client['"][\s;]*/m, '');
+        }
+      },
+    },
+  ],
   test: {
     environment: 'happy-dom',
     globals: true,
+    setupFiles: ['./vitest.setup.ts'],
   },
   resolve: {
     alias: {
