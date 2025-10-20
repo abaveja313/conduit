@@ -3,7 +3,7 @@ import type { FileMetadata } from './types.js';
 import { FileScanner } from './scanner.js';
 import { createLogger, ErrorCodes, wrapError, getErrorMessage } from '@conduit/shared';
 import pLimit from 'p-limit';
-import { isBinaryFromContent, normalizePath, logFileOperation } from './file-utils.js';
+import { isBinaryFromContent, normalizePath, logFileOperation, decodeText } from './file-utils.js';
 import { DocumentExtractor } from './document-extractor.js';
 import { getOptimalConcurrency } from './concurrency-utils.js';
 
@@ -396,7 +396,7 @@ export class FileManager {
             const contents = validResults.map((r) => r.content);
             const textContents = validResults.map((r) => {
               const result = r as { path: string; content: Uint8Array; textContent?: Uint8Array };
-              return result.textContent || null;
+              return result.textContent ? decodeText(result.textContent) : '';
             });
 
             const normalizedPaths = validPaths.map((p) => normalizePath(p));
@@ -418,7 +418,7 @@ export class FileManager {
               throw new Error('Invalid batch data: parameters must be arrays');
             }
 
-            const hasTextContent = textContents.some(tc => tc !== null);
+            const hasTextContent = textContents.some(tc => tc !== '');
 
             const undefinedContentIndex = contents.findIndex(c => c === undefined || c === null);
             if (undefinedContentIndex !== -1) {
@@ -439,8 +439,8 @@ export class FileManager {
               }
 
               try {
-                if (filteredTextContents.some(tc => tc !== null)) {
-                  wasm.load_file_batch_with_text(filteredPaths, filteredContents, filteredTextContents, filteredTimestamps, filteredPermissions);
+                if (filteredTextContents.some(tc => tc !== '')) {
+                  wasm.load_file_batch_with_text(filteredPaths, filteredContents, filteredTimestamps, filteredPermissions, filteredTextContents);
                 } else {
                   wasm.load_file_batch(filteredPaths, filteredContents, filteredTimestamps, filteredPermissions);
                 }
@@ -457,7 +457,7 @@ export class FileManager {
             } else {
               try {
                 if (hasTextContent) {
-                  wasm.load_file_batch_with_text(normalizedPaths, contents, textContents, timestamps, permissions);
+                  wasm.load_file_batch_with_text(normalizedPaths, contents, timestamps, permissions, textContents);
                 } else {
                   wasm.load_file_batch(normalizedPaths, contents, timestamps, permissions);
                 }

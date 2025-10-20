@@ -29,7 +29,7 @@ export function begin_file_load(): void;
  */
 export function load_file_batch(
   paths: string[],
-  contents: Array<ArrayBuffer | Uint8Array | string>, // js_sys::Array
+  contents: Uint8Array[],
   mtimes: number[],
   permissions: boolean[],
 ): number;
@@ -47,10 +47,10 @@ export function load_file_batch(
  */
 export function load_file_batch_with_text(
   paths: string[],
-  contents: Array<ArrayBuffer | Uint8Array | string>,
-  text_contents: Array<ArrayBuffer | Uint8Array | string | null>,
+  contents: Uint8Array[],
   mtimes: number[],
   permissions: boolean[],
+  text_contents?: string[],
 ): number;
 
 /**
