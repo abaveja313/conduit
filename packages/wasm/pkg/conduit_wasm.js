@@ -270,6 +270,30 @@ export function load_file_batch(paths, contents, mtimes, permissions) {
 }
 
 /**
+ * Load a batch of files with optional text content into staging.
+ * For documents (PDF/DOCX), pass original bytes in contents and extracted text in text_contents.
+ * @param {string[]} paths
+ * @param {Array<any>} contents
+ * @param {Array<any>} text_contents
+ * @param {Float64Array} mtimes
+ * @param {boolean[]} permissions
+ * @returns {number}
+ */
+export function load_file_batch_with_text(paths, contents, text_contents, mtimes, permissions) {
+    const ptr0 = passArrayJsValueToWasm0(paths, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF64ToWasm0(mtimes, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArrayJsValueToWasm0(permissions, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.load_file_batch_with_text(ptr0, len0, contents, text_contents, ptr1, len1, ptr2, len2);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+}
+
+/**
  * Commit all staged files to the active index.
  * Returns the number of files committed.
  * @returns {number}
@@ -805,6 +829,14 @@ function __wbg_get_imports() {
         const len1 = WASM_VECTOR_LEN;
         getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+    };
+    imports.wbg.__wbg_wbindgenisnull_f3037694abe4d97a = function(arg0) {
+        const ret = arg0 === null;
+        return ret;
+    };
+    imports.wbg.__wbg_wbindgenisundefined_c4b71d073b92f3c5 = function(arg0) {
+        const ret = arg0 === undefined;
+        return ret;
     };
     imports.wbg.__wbg_wbindgennumberget_f74b4c7525ac05cb = function(arg0, arg1) {
         const obj = arg1;

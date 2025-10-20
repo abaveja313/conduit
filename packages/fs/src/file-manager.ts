@@ -41,6 +41,7 @@ export class FileManager {
   private rootDirectoryHandle?: FileSystemDirectoryHandle;
   private limit: ReturnType<typeof pLimit>;
   private extractedContent = new Map<string, Uint8Array>();
+  private originalDocumentContent = new Map<string, Uint8Array>();
 
   private readonly defaultConfig: Required<
     Omit<FileManagerConfig, 'onProgress' | 'onScanProgress' | 'onDocumentExtractionProgress'>
@@ -266,8 +267,10 @@ export class FileManager {
               if (extractedText) {
                 const textEncoder = new TextEncoder();
                 const textBuffer = textEncoder.encode(extractedText);
+                const originalBuffer = new Uint8Array(buffer);
 
                 this.extractedContent.set(path, textBuffer);
+                this.originalDocumentContent.set(path, originalBuffer);
 
                 const metadata = this.metadata.get(path);
                 if (metadata) {
@@ -332,15 +335,17 @@ export class FileManager {
                 const metadata = this.metadata.get(path);
 
                 if (metadata?.extracted) {
+                  const originalContent = this.originalDocumentContent.get(path);
                   const extractedContent = this.extractedContent.get(path);
-                  if (extractedContent) {
+                  if (originalContent && extractedContent) {
                     return {
                       path,
-                      content: extractedContent,
+                      content: originalContent,
+                      textContent: extractedContent,
                     };
                   }
 
-                  logger.warn(`No extracted content found for ${path}, skipping`);
+                  logger.warn(`Missing content for extracted document ${path}, skipping`);
                   return null;
                 }
 
@@ -372,6 +377,10 @@ export class FileManager {
         if (validResults.length > 0) {
           const validPaths = validResults.map((r) => r.path);
           const contents = validResults.map((r) => r.content);
+          const textContents = validResults.map((r) => {
+            const result = r as { path: string; content: Uint8Array; textContent?: Uint8Array };
+            return result.textContent || null;
+          });
 
           const normalizedPaths = validPaths.map((p) => normalizePath(p));
           const timestamps = validPaths.map(
@@ -392,6 +401,8 @@ export class FileManager {
             throw new Error('Invalid batch data: parameters must be arrays');
           }
 
+          const hasTextContent = textContents.some(tc => tc !== null);
+
           const undefinedContentIndex = contents.findIndex(c => c === undefined || c === null);
           if (undefinedContentIndex !== -1) {
             logger.error('Found undefined content at index:', undefinedContentIndex, 'for path:', normalizedPaths[undefinedContentIndex]);
@@ -401,6 +412,7 @@ export class FileManager {
 
             const filteredPaths = validIndices.map(i => normalizedPaths[i]);
             const filteredContents = validIndices.map(i => contents[i]) as Uint8Array[];
+            const filteredTextContents = validIndices.map(i => textContents[i]);
             const filteredTimestamps = validIndices.map(i => timestamps[i]);
             const filteredPermissions = validIndices.map(i => permissions[i]);
 
@@ -410,7 +422,11 @@ export class FileManager {
             }
 
             try {
-              wasm.load_file_batch(filteredPaths, filteredContents, filteredTimestamps, filteredPermissions);
+              if (filteredTextContents.some(tc => tc !== null)) {
+                wasm.load_file_batch_with_text(filteredPaths, filteredContents, filteredTextContents, filteredTimestamps, filteredPermissions);
+              } else {
+                wasm.load_file_batch(filteredPaths, filteredContents, filteredTimestamps, filteredPermissions);
+              }
             } catch (filteredError) {
               logger.error('Error loading filtered batch:', filteredError);
               logger.debug('Filtered batch details:', {
@@ -423,7 +439,11 @@ export class FileManager {
             }
           } else {
             try {
-              wasm.load_file_batch(normalizedPaths, contents, timestamps, permissions);
+              if (hasTextContent) {
+                wasm.load_file_batch_with_text(normalizedPaths, contents, textContents, timestamps, permissions);
+              } else {
+                wasm.load_file_batch(normalizedPaths, contents, timestamps, permissions);
+              }
             } catch (batchError) {
               logger.error('Error loading file batch:', batchError);
               logger.debug('Batch details:', {

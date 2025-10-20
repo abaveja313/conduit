@@ -17,6 +17,7 @@ pub struct FileEntry {
     size: u64,
     mtime: i64, // unix epoch
     bytes: Option<Arc<[u8]>>,
+    text_content: Option<Arc<[u8]>>,
     editable: bool,
 }
 
@@ -53,6 +54,7 @@ impl FileEntry {
             size,
             mtime,
             bytes: None,
+            text_content: None,
             editable,
         }
     }
@@ -76,6 +78,7 @@ impl FileEntry {
             size,
             mtime,
             bytes: None,
+            text_content: None,
             editable,
         }
     }
@@ -94,6 +97,7 @@ impl FileEntry {
             size,
             mtime,
             bytes: Some(bytes),
+            text_content: None,
             editable,
         }
     }
@@ -123,6 +127,7 @@ impl FileEntry {
             size,
             mtime,
             bytes: Some(bytes),
+            text_content: None,
             editable,
         }
     }
@@ -139,6 +144,30 @@ impl FileEntry {
     /// Drop content, keep metadata.
     pub fn clear_bytes(&mut self) {
         self.bytes = None;
+        self.text_content = None;
+    }
+
+    pub fn from_bytes_with_text(
+        ext: impl Into<String>,
+        mtime: i64,
+        original_bytes: Arc<[u8]>,
+        text_content: Arc<[u8]>,
+        editable: bool,
+    ) -> Self {
+        let size = original_bytes.len() as u64;
+        Self {
+            ext: ext.into(),
+            mime_type: None,
+            size,
+            mtime,
+            bytes: Some(original_bytes),
+            text_content: Some(text_content),
+            editable,
+        }
+    }
+
+    pub fn search_content(&self) -> Option<&[u8]> {
+        self.text_content.as_deref().or(self.bytes.as_deref())
     }
 
     /// File content if loaded.

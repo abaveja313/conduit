@@ -59,7 +59,7 @@ impl Orchestrator {
                 }
             }
 
-            let content = match entry.bytes() {
+            let content = match entry.search_content() {
                 Some(bytes) => bytes,
                 None => continue,
             };
@@ -114,7 +114,7 @@ impl Orchestrator {
             .get_file(path)
             .ok_or_else(|| Error::FileNotFound(path.as_str().to_string()))?;
 
-        let content = entry.bytes().ok_or_else(|| {
+        let content = entry.search_content().ok_or_else(|| {
             Error::MissingContent(format!("File has no content: {}", path.as_str()))
         })?;
         extract_lines(path.clone(), content, start_line, end_line)
@@ -139,7 +139,7 @@ impl Orchestrator {
 
         let size = entry.size();
 
-        let line_count = if let Some(bytes) = entry.bytes() {
+        let line_count = if let Some(bytes) = entry.search_content() {
             String::from_utf8_lossy(bytes).lines().count()
         } else {
             0
@@ -187,7 +187,16 @@ impl Orchestrator {
     }
 
     pub fn handle_copy_file(&self, req: MoveFileRequest) -> Result<MoveFileResponse> {
-        let src_content = self.get_file_content(&req.src, SearchSpace::Staged)?;
+        let staged = self.index_manager.staged_index()?;
+        let src_entry = staged
+            .get_file(&req.src)
+            .ok_or_else(|| Error::FileNotFound(req.src.as_str().to_string()))?;
+
+        let original_bytes = src_entry.bytes().ok_or_else(|| {
+            Error::MissingContent(format!("No original bytes for: {}", req.src.as_str()))
+        })?;
+
+        let src_content = String::from_utf8_lossy(original_bytes).to_string();
         let line_count = src_content.lines().count();
 
         self.stage_file_with_content(&req.dst, src_content)?;
@@ -229,7 +238,7 @@ impl Orchestrator {
             .get_file(path)
             .ok_or_else(|| Error::InvalidPath(format!("File not found: {}", path.as_str())))?;
 
-        let content = entry.bytes().ok_or_else(|| {
+        let content = entry.search_content().ok_or_else(|| {
             Error::MissingContent(format!("File has no content: {}", path.as_str()))
         })?;
 
@@ -530,7 +539,7 @@ impl DiffTool for Orchestrator {
 
         // Get content, treating missing files as empty
         let active_content = match active_index.get_file(path) {
-            Some(entry) => match entry.bytes() {
+            Some(entry) => match entry.search_content() {
                 Some(bytes) => std::str::from_utf8(bytes)
                     .map(|s| s.to_string())
                     .unwrap_or_else(|_| String::from_utf8_lossy(bytes).to_string()),
@@ -540,7 +549,7 @@ impl DiffTool for Orchestrator {
         };
 
         let staged_content = match staged_index.get_file(path) {
-            Some(entry) => match entry.bytes() {
+            Some(entry) => match entry.search_content() {
                 Some(bytes) => std::str::from_utf8(bytes)
                     .map(|s| s.to_string())
                     .unwrap_or_else(|_| String::from_utf8_lossy(bytes).to_string()),

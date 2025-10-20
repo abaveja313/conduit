@@ -19,6 +19,11 @@ export function begin_file_load(): void;
  */
 export function load_file_batch(paths: string[], contents: Array<any>, mtimes: Float64Array, permissions: boolean[]): number;
 /**
+ * Load a batch of files with optional text content into staging.
+ * For documents (PDF/DOCX), pass original bytes in contents and extracted text in text_contents.
+ */
+export function load_file_batch_with_text(paths: string[], contents: Array<any>, text_contents: Array<any>, mtimes: Float64Array, permissions: boolean[]): number;
+/**
  * Commit all staged files to the active index.
  * Returns the number of files committed.
  */
@@ -173,6 +178,7 @@ export interface InitOutput {
   readonly ping: () => [number, number];
   readonly begin_file_load: () => [number, number];
   readonly load_file_batch: (a: number, b: number, c: any, d: number, e: number, f: number, g: number) => [number, number, number];
+  readonly load_file_batch_with_text: (a: number, b: number, c: any, d: any, e: number, f: number, g: number, h: number) => [number, number, number];
   readonly commit_file_load: () => [number, number, number];
   readonly abort_file_load: () => [number, number];
   readonly begin_index_staging: () => [number, number];

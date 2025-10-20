@@ -88,6 +88,29 @@ pub fn load_file_batch(
     mtimes: Vec<f64>,        // JS timestamps are always f64
     permissions: Vec<Boolean>,
 ) -> Result<usize, JsValue> {
+    load_file_batch_impl(paths, contents, None, mtimes, permissions)
+}
+
+/// Load a batch of files with optional text content into staging.
+/// For documents (PDF/DOCX), pass original bytes in contents and extracted text in text_contents.
+#[wasm_bindgen]
+pub fn load_file_batch_with_text(
+    paths: Vec<String>,
+    contents: js_sys::Array,
+    text_contents: js_sys::Array,
+    mtimes: Vec<f64>,
+    permissions: Vec<Boolean>,
+) -> Result<usize, JsValue> {
+    load_file_batch_impl(paths, contents, Some(text_contents), mtimes, permissions)
+}
+
+fn load_file_batch_impl(
+    paths: Vec<String>,
+    contents: js_sys::Array,
+    text_contents: Option<js_sys::Array>,
+    mtimes: Vec<f64>,
+    permissions: Vec<Boolean>,
+) -> Result<usize, JsValue> {
     let len = paths.len();
     let contents_len = contents.length() as usize;
     if contents_len != len || mtimes.len() != len || permissions.len() != len {
@@ -98,6 +121,16 @@ pub fn load_file_batch(
             mtimes.len(),
             permissions.len()
         ));
+    }
+
+    if let Some(ref text_arr) = text_contents {
+        if text_arr.length() as usize != len {
+            return Err(js_err!(
+                "Text contents array length mismatch: expected {}, got {}",
+                len,
+                text_arr.length()
+            ));
+        }
     }
 
     if len == 0 {
@@ -132,11 +165,23 @@ pub fn load_file_batch(
 
         let uint8_array = Uint8Array::from(contents.get(i as u32));
         let content_vec = uint8_array.to_vec();
-
         let content_arc: Arc<[u8]> = content_vec.into();
 
         let ext = FileEntry::get_extension(path_key.as_str());
-        let entry = FileEntry::from_bytes(ext, mtime_secs, content_arc, editable);
+
+        let entry = if let Some(ref text_arr) = text_contents {
+            let text_val = text_arr.get(i as u32);
+            if !text_val.is_null() && !text_val.is_undefined() {
+                let text_uint8_array = Uint8Array::from(text_val);
+                let text_vec = text_uint8_array.to_vec();
+                let text_arc: Arc<[u8]> = text_vec.into();
+                FileEntry::from_bytes_with_text(ext, mtime_secs, content_arc, text_arc, editable)
+            } else {
+                FileEntry::from_bytes(ext, mtime_secs, content_arc, editable)
+            }
+        } else {
+            FileEntry::from_bytes(ext, mtime_secs, content_arc, editable)
+        };
 
         entries.push((path_key, entry));
     }

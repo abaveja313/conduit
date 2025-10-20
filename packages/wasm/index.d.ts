@@ -35,6 +35,25 @@ export function load_file_batch(
 ): number;
 
 /**
+ * Load a batch of files with both original and extracted text content into staging.
+ * For documents (PDF/DOCX), pass original bytes in contents and extracted text in text_contents.
+ * @param paths - File paths (will be normalized internally)
+ * @param contents - Array of original file contents (Uint8Arrays)
+ * @param text_contents - Array of extracted text contents (Uint8Arrays or null for non-documents)
+ * @param mtimes - Last modified timestamps (JavaScript milliseconds since epoch)
+ * @param permissions - Array of booleans indicating if each file is editable
+ * @returns Number of files loaded in this batch
+ * @throws {Error} If array lengths don't match or paths are invalid
+ */
+export function load_file_batch_with_text(
+  paths: string[],
+  contents: Array<ArrayBuffer | Uint8Array | string>,
+  text_contents: Array<ArrayBuffer | Uint8Array | string | null>,
+  mtimes: number[],
+  permissions: boolean[],
+): number;
+
+/**
  * Commit all staged files to the active index.
  * @returns The number of files committed
  * @throws {Error} If no staging session is active
