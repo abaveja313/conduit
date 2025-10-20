@@ -2,7 +2,10 @@
 
 import { useState, useRef, useEffect } from "react"
 import { AnimatePresence } from "framer-motion"
-import { Train, RefreshCw, ChevronRight, Send, Settings, CheckCircle2, FileText, Files, File, Github } from "lucide-react"
+import {
+  Train, RefreshCw, ChevronRight, Send, Settings,
+  FileText, Files, File, Github
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createLogger } from "@conduit/shared"
 import { Textarea } from "@/components/ui/textarea"
@@ -14,7 +17,9 @@ import { streamAnthropicResponse } from "@/lib/anthropic-client"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useFileChanges } from "@/hooks/useFileChanges"
 import { formatDuration, formatMemory } from "@/lib/format"
-import { DEFAULT_DIVIDER_POSITION, COMMIT_BANNER_TIMEOUT, STATUS_COLORS } from "@/lib/constants"
+import { DEFAULT_DIVIDER_POSITION, STATUS_COLORS } from "@/lib/constants"
+import { SyncModal } from "@/components/SyncModal"
+import { PersistButtons } from "@/components/PersistButtons"
 import * as wasm from "@conduit/wasm"
 import {
   trackQuerySent,
@@ -251,14 +256,15 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [dividerPosition, setDividerPosition] = useState(DEFAULT_DIVIDER_POSITION)
   const isDragging = useRef(false)
-  const [commitBanner, setCommitBanner] = useState<{
-    show: boolean
-    stats: {
-      modified: number
-      deleted: number
-      total: number
-    } | null
-  }>({ show: false, stats: null })
+  const [isPersisting, setIsPersisting] = useState(false)
+  const [persistProgress, setPersistProgress] = useState<{
+    current: number
+    total: number
+    currentFile?: string
+    phase: 'preparing' | 'persisting' | 'finalizing' | 'complete'
+    duration?: number
+    avgLatency?: number
+  }>({ current: 0, total: 0, phase: 'preparing' })
   const [activeTab, setActiveTab] = useState("files")
   const [files, setFiles] = useState<Array<{
     path: string
@@ -770,15 +776,40 @@ export default function Home() {
   const handleCommit = async () => {
     if (!fileService) return
 
+    setIsPersisting(true)
     const startTime = performance.now()
+    const totalFiles = fileChanges.length
+
+    // Initialize progress
+    setPersistProgress({
+      current: 0,
+      total: totalFiles,
+      phase: 'preparing'
+    })
 
     try {
+      setPersistProgress(prev => ({ ...prev, phase: 'persisting' }))
+
+      // Quick progress animation
+      const progressInterval = setInterval(() => {
+        setPersistProgress(prev => {
+          if (prev.current < prev.total) {
+            return {
+              ...prev,
+              current: Math.min(prev.current + 1, prev.total)
+            }
+          }
+          return prev
+        })
+      }, 20)
+
       const result = await fileService.commitChanges()
+      clearInterval(progressInterval)
+
       const duration = performance.now() - startTime
 
       logger.info(`Committed ${result.fileCount} files with ${result.modified.length} modifications and ${result.deleted.length} deletions`)
 
-      // Calculate total lines changed
       let totalLinesAdded = 0
       let totalLinesRemoved = 0
       fileChanges.forEach(change => {
@@ -786,7 +817,6 @@ export default function Home() {
         totalLinesRemoved += change.linesRemoved
       })
 
-      // Track changes committed
       trackChangesCommitted({
         filesModified: result.modified.length,
         filesDeleted: result.deleted.length,
@@ -795,15 +825,14 @@ export default function Home() {
         duration
       })
 
-      setCommitBanner({
-        show: true,
-        stats: {
-          modified: result.modified.length,
-          deleted: result.deleted.length,
-          total: result.fileCount
-        }
+      // Show complete state with stats
+      setPersistProgress({
+        current: totalFiles,
+        total: totalFiles,
+        phase: 'complete',
+        duration,
+        avgLatency: systemStats.avgLatency
       })
-
       setFileChanges([])
 
       // Reset system stats for staged files
@@ -814,13 +843,11 @@ export default function Home() {
       }))
 
       await loadFiles(fileService, 0)
-
-      setTimeout(() => {
-        setCommitBanner({ show: false, stats: null })
-      }, COMMIT_BANNER_TIMEOUT)
     } catch (error) {
+      setIsPersisting(false)
+      setPersistProgress({ current: 0, total: 0, phase: 'preparing', avgLatency: undefined })
       logger.error('Failed to commit changes:', error)
-      alert('Failed to persist changes. Check console for details.')
+      alert('Failed to sync changes. Check console for details.')
     }
   }
 
@@ -931,6 +958,15 @@ export default function Home() {
           </Button>
         </div>
       </div>
+
+      <SyncModal
+        isVisible={isPersisting}
+        progress={persistProgress}
+        onClose={() => {
+          setIsPersisting(false)
+          setPersistProgress({ current: 0, total: 0, phase: 'preparing', avgLatency: undefined })
+        }}
+      />
 
       {/* Main Content */}
       {!isSetupComplete ? (
@@ -1180,26 +1216,6 @@ export default function Home() {
 
                       <TabsContent value="modifications" className="flex-1 flex flex-col mt-0 min-h-0 overflow-hidden">
                         <div className="flex-1 overflow-y-auto p-4 min-h-0 overflow-x-hidden">
-                          {commitBanner.show && commitBanner.stats && (
-                            <div className="mb-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <CheckCircle2 className="h-5 w-5 text-green-500" />
-                                  <span className="font-medium text-green-500">Changes Persisted Successfully</span>
-                                </div>
-                                <button
-                                  onClick={() => setCommitBanner({ show: false, stats: null })}
-                                  className="text-green-500 hover:text-green-600"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                {commitBanner.stats.modified} files modified
-                                {commitBanner.stats.deleted > 0 && `, ${commitBanner.stats.deleted} files deleted`}
-                              </div>
-                            </div>
-                          )}
                           {fileChanges.length === 0 ? (
                             <p className="text-muted-foreground text-center mt-8">
                               No files modified yet
@@ -1261,14 +1277,12 @@ export default function Home() {
                         </div>
 
                         {fileChanges.length > 0 && (
-                          <div className="p-4 border-t border-border flex gap-2 flex-shrink-0">
-                            <Button onClick={handleCommit} className="flex-1" disabled={isLoading}>
-                              Persist to Disk
-                            </Button>
-                            <Button onClick={handleRevert} variant="outline" className="flex-1" disabled={isLoading}>
-                              Revert All
-                            </Button>
-                          </div>
+                          <PersistButtons
+                            onCommit={handleCommit}
+                            onRevert={handleRevert}
+                            isPersisting={isPersisting}
+                            isLoading={isLoading}
+                          />
                         )}
                       </TabsContent>
                     </Tabs>
