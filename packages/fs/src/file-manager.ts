@@ -255,7 +255,7 @@ export class FileManager {
 
               const file = await handle.getFile();
               const buffer = await file.arrayBuffer();
-              
+
               // Create a copy of the buffer BEFORE extraction to avoid detached buffer issues
               const originalBuffer = new Uint8Array(buffer);
               const bufferCopy = originalBuffer.buffer.slice(0);
