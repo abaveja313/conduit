@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { getAvailableModels, MODELS } from '../model-utils';
+import { MODELS } from '../ModelGrid';
+import { getAvailableModels } from '../model-utils';
 
 describe('Model availability logic', () => {
   describe('With user API key', () => {
