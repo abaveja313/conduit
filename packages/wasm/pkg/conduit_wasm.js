@@ -30,11 +30,6 @@ function getStringFromWasm0(ptr, len) {
     return decodeText(ptr, len);
 }
 
-function getArrayU8FromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
-}
-
 function addToExternrefTable0(obj) {
     const idx = wasm.__externref_table_alloc();
     wasm.__wbindgen_export_3.set(idx, obj);
@@ -48,6 +43,11 @@ function handleError(f, args) {
         const idx = addToExternrefTable0(e);
         wasm.__wbindgen_exn_store(idx);
     }
+}
+
+function getArrayU8FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
 }
 
 let WASM_VECTOR_LEN = 0;
@@ -111,10 +111,6 @@ function getDataViewMemory0() {
         cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
     }
     return cachedDataViewMemory0;
-}
-
-function isLikeNone(x) {
-    return x === undefined || x === null;
 }
 
 function debugString(val) {
@@ -181,28 +177,9 @@ function debugString(val) {
     // TODO we could test for more things here, like `Set`s and `Map`s.
     return className;
 }
-/**
- * Initialize the WASM module.
- */
-export function init() {
-    wasm.init();
-}
 
-/**
- * Test function to verify the module is working.
- * @returns {string}
- */
-export function ping() {
-    let deferred1_0;
-    let deferred1_1;
-    try {
-        const ret = wasm.ping();
-        deferred1_0 = ret[0];
-        deferred1_1 = ret[1];
-        return getStringFromWasm0(ret[0], ret[1]);
-    } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-    }
+function isLikeNone(x) {
+    return x === undefined || x === null;
 }
 
 function takeFromExternrefTable0(idx) {
@@ -210,12 +187,9 @@ function takeFromExternrefTable0(idx) {
     wasm.__externref_table_dealloc(idx);
     return value;
 }
-/**
- * Begin a new file loading session.
- * Clears any existing index and starts fresh staging.
- */
-export function begin_file_load() {
-    const ret = wasm.begin_file_load();
+
+export function clear_wasm_index() {
+    const ret = wasm.clear_wasm_index();
     if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
     }
@@ -247,22 +221,25 @@ function passArrayF64ToWasm0(arg, malloc) {
     return ptr;
 }
 /**
- * Load a batch of files with content into staging.
- * Arrays must have the same length.
  * @param {string[]} paths
- * @param {Array<any>} contents
+ * @param {Uint8Array[]} contents
  * @param {Float64Array} mtimes
  * @param {boolean[]} permissions
+ * @param {string[] | null} [text_contents]
  * @returns {number}
  */
-export function load_file_batch(paths, contents, mtimes, permissions) {
+export function add_files_to_staging(paths, contents, mtimes, permissions, text_contents) {
     const ptr0 = passArrayJsValueToWasm0(paths, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArrayF64ToWasm0(mtimes, wasm.__wbindgen_malloc);
+    const ptr1 = passArrayJsValueToWasm0(contents, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passArrayJsValueToWasm0(permissions, wasm.__wbindgen_malloc);
+    const ptr2 = passArrayF64ToWasm0(mtimes, wasm.__wbindgen_malloc);
     const len2 = WASM_VECTOR_LEN;
-    const ret = wasm.load_file_batch(ptr0, len0, contents, ptr1, len1, ptr2, len2);
+    const ptr3 = passArrayJsValueToWasm0(permissions, wasm.__wbindgen_malloc);
+    const len3 = WASM_VECTOR_LEN;
+    var ptr4 = isLikeNone(text_contents) ? 0 : passArrayJsValueToWasm0(text_contents, wasm.__wbindgen_malloc);
+    var len4 = WASM_VECTOR_LEN;
+    const ret = wasm.add_files_to_staging(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -270,55 +247,16 @@ export function load_file_batch(paths, contents, mtimes, permissions) {
 }
 
 /**
- * Load a batch of files with optional text content into staging.
- * For documents (PDF/DOCX), pass original bytes in contents and extracted text in text_contents.
- * @param {string[]} paths
- * @param {Array<any>} contents
- * @param {Array<any>} text_contents
- * @param {Float64Array} mtimes
- * @param {boolean[]} permissions
  * @returns {number}
  */
-export function load_file_batch_with_text(paths, contents, text_contents, mtimes, permissions) {
-    const ptr0 = passArrayJsValueToWasm0(paths, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArrayF64ToWasm0(mtimes, wasm.__wbindgen_malloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passArrayJsValueToWasm0(permissions, wasm.__wbindgen_malloc);
-    const len2 = WASM_VECTOR_LEN;
-    const ret = wasm.load_file_batch_with_text(ptr0, len0, contents, text_contents, ptr1, len1, ptr2, len2);
+export function promote_staged_index() {
+    const ret = wasm.promote_staged_index();
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return ret[0] >>> 0;
 }
 
-/**
- * Commit all staged files to the active index.
- * Returns the number of files committed.
- * @returns {number}
- */
-export function commit_file_load() {
-    const ret = wasm.commit_file_load();
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return ret[0] >>> 0;
-}
-
-/**
- * Abort the current file load and discard staged changes.
- */
-export function abort_file_load() {
-    const ret = wasm.abort_file_load();
-    if (ret[1]) {
-        throw takeFromExternrefTable0(ret[0]);
-    }
-}
-
-/**
- * Begin a manual staging session.
- */
 export function begin_index_staging() {
     const ret = wasm.begin_index_staging();
     if (ret[1]) {
@@ -327,7 +265,17 @@ export function begin_index_staging() {
 }
 
 /**
- * Commit the staged index to active, returning modified files and count.
+ * @returns {any}
+ */
+export function get_staging_info() {
+    const ret = wasm.get_staging_info();
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * @returns {any}
  */
 export function commit_index_staging() {
@@ -338,9 +286,6 @@ export function commit_index_staging() {
     return takeFromExternrefTable0(ret[0]);
 }
 
-/**
- * Revert active staging session without committing.
- */
 export function revert_index_staging() {
     const ret = wasm.revert_index_staging();
     if (ret[1]) {
@@ -349,7 +294,6 @@ export function revert_index_staging() {
 }
 
 /**
- * Get staged modifications without committing.
  * @returns {any}
  */
 export function get_staged_modifications() {
@@ -361,7 +305,6 @@ export function get_staged_modifications() {
 }
 
 /**
- * Get staged deletions without committing.
  * @returns {any}
  */
 export function get_staged_deletions() {
@@ -373,8 +316,6 @@ export function get_staged_deletions() {
 }
 
 /**
- * Get summary of all modified files with line change statistics.
- * Returns an array of objects with path, linesAdded, linesRemoved, and status.
  * @returns {any}
  */
 export function get_modified_files_summary() {
@@ -386,8 +327,6 @@ export function get_modified_files_summary() {
 }
 
 /**
- * Get detailed diff for a specific file.
- * Returns regions of changes with line numbers and content.
  * @param {string} path
  * @returns {any}
  */
@@ -402,7 +341,6 @@ export function get_file_diff(path) {
 }
 
 /**
- * Get staged modifications with both active and staged content for diff preview.
  * @returns {any}
  */
 export function get_staged_modifications_with_active() {
@@ -413,53 +351,14 @@ export function get_staged_modifications_with_active() {
     return takeFromExternrefTable0(ret[0]);
 }
 
-/**
- * Get the number of files in the active index.
- * @returns {number}
- */
-export function file_count() {
-    const ret = wasm.file_count();
-    return ret >>> 0;
-}
-
-/**
- * Clear the entire index.
- */
-export function clear_index() {
-    const ret = wasm.clear_index();
+export function abort_file_load() {
+    const ret = wasm.abort_file_load();
     if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
     }
 }
 
 /**
- * Get basic statistics about the current index.
- * @returns {any}
- */
-export function get_index_stats() {
-    const ret = wasm.get_index_stats();
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * Read specific lines from a file in the index.
- *
- * # Arguments
- * * `path` - The file path to read from
- * * `start_line` - Starting line number (1-based, inclusive)
- * * `end_line` - Ending line number (1-based, inclusive)
- * * `use_staged` - If true, read from staged index; otherwise read from active index
- *
- * # Returns
- * A JavaScript object containing:
- * - `path`: The file path
- * - `startLine`: The actual start line (may be clamped to file bounds)
- * - `endLine`: The actual end line (may be clamped to file bounds)
- * - `content`: The extracted text content
- * - `totalLines`: Total number of lines in the file
  * @param {string} path
  * @param {number} start_line
  * @param {number} end_line
@@ -477,104 +376,6 @@ export function read_file_lines(path, start_line, end_line, use_staged) {
 }
 
 /**
- * Create or overwrite a file in the staged index.
- * @param {string} path
- * @param {Uint8Array | null | undefined} content
- * @param {boolean} allow_overwrite
- * @returns {any}
- */
-export function create_index_file(path, content, allow_overwrite) {
-    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.create_index_file(ptr0, len0, isLikeNone(content) ? 0 : addToExternrefTable0(content), allow_overwrite);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * List files from the index with pagination support.
- *
- * # Arguments
- * * `start` - Starting index (0-based, inclusive)
- * * `stop` - Ending index (exclusive). If 0, returns all files from start.
- * * `use_staged` - If true, list from staged index; otherwise list from active index
- *
- * # Returns
- * A JavaScript object containing:
- * - `files`: Array of file objects with path and metadata
- * - `total`: Total number of files in the index
- * - `start`: The actual start index used
- * - `end`: The actual end index (exclusive) of returned files
- * @param {number} start
- * @param {number} stop
- * @param {boolean} use_staged
- * @param {string | null} [glob_pattern]
- * @returns {any}
- */
-export function list_files(start, stop, use_staged, glob_pattern) {
-    var ptr0 = isLikeNone(glob_pattern) ? 0 : passStringToWasm0(glob_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len0 = WASM_VECTOR_LEN;
-    const ret = wasm.list_files(start, stop, use_staged, ptr0, len0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * Search for matches in files using regex patterns.
- *
- * Returns an array of preview hunks showing matches with surrounding context.
- * @param {string} pattern
- * @param {boolean} use_staged
- * @param {boolean | null} [case_insensitive]
- * @param {boolean | null} [whole_word]
- * @param {any[] | null} [include_globs]
- * @param {any[] | null} [exclude_globs]
- * @param {number | null} [context_lines]
- * @returns {any}
- */
-export function find_in_files(pattern, use_staged, case_insensitive, whole_word, include_globs, exclude_globs, context_lines) {
-    const ptr0 = passStringToWasm0(pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    var ptr1 = isLikeNone(include_globs) ? 0 : passArrayJsValueToWasm0(include_globs, wasm.__wbindgen_malloc);
-    var len1 = WASM_VECTOR_LEN;
-    var ptr2 = isLikeNone(exclude_globs) ? 0 : passArrayJsValueToWasm0(exclude_globs, wasm.__wbindgen_malloc);
-    var len2 = WASM_VECTOR_LEN;
-    const ret = wasm.find_in_files(ptr0, len0, use_staged, isLikeNone(case_insensitive) ? 0xFFFFFF : case_insensitive ? 1 : 0, isLikeNone(whole_word) ? 0xFFFFFF : whole_word ? 1 : 0, ptr1, len1, ptr2, len2, isLikeNone(context_lines) ? 0x100000001 : (context_lines) >>> 0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * Delete a file from the staged index, if it exists.
- * @param {string} path
- * @returns {any}
- */
-export function delete_index_file(path) {
-    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.delete_index_file(ptr0, len0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * Replace specific lines in a file by line number.
- *
- * # Arguments
- * * `path` - The file path to modify
- * * `replacements` - JavaScript array of [lineNumber, newContent] pairs (line numbers are 1-based)
- * * `use_staged` - If true, modify staged index; otherwise modify active index
- *
- * # Returns
- * Object containing path, lines_replaced, and total_lines
  * @param {string} path
  * @param {Array<any>} replacements
  * @param {boolean} _use_staged
@@ -606,12 +407,6 @@ function passArray32ToWasm0(arg, malloc) {
     return ptr;
 }
 /**
- * Delete specific lines from a file.
- *
- * # Arguments
- * * `path` - The file path to modify
- * * `line_numbers` - Array of line numbers to delete (1-based)
- * * `use_staged` - If true, modify staged index; otherwise modify active index
  * @param {string} path
  * @param {Uint32Array} line_numbers
  * @param {boolean} _use_staged
@@ -630,13 +425,6 @@ export function delete_lines(path, line_numbers, _use_staged) {
 }
 
 /**
- * Insert new content before a specific line.
- *
- * # Arguments
- * * `path` - The file path to modify
- * * `line_number` - Line number where to insert (1-based)
- * * `content` - Content to insert (can be multi-line)
- * * `use_staged` - If true, modify staged index; otherwise modify active index
  * @param {string} path
  * @param {number} line_number
  * @param {string} content
@@ -656,13 +444,6 @@ export function insert_before_line(path, line_number, content, _use_staged) {
 }
 
 /**
- * Insert new content after a specific line.
- *
- * # Arguments
- * * `path` - The file path to modify
- * * `line_number` - Line number after which to insert (1-based)
- * * `content` - Content to insert (can be multi-line)
- * * `use_staged` - If true, modify staged index; otherwise modify active index
  * @param {string} path
  * @param {number} line_number
  * @param {string} content
@@ -675,6 +456,213 @@ export function insert_after_line(path, line_number, content, _use_staged) {
     const ptr1 = passStringToWasm0(content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
     const ret = wasm.insert_after_line(ptr0, len0, line_number, ptr1, len1, _use_staged);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string} path
+ * @param {Array<any>} insertions
+ * @param {boolean} _use_staged
+ * @returns {any}
+ */
+export function insert_lines(path, insertions, _use_staged) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.insert_lines(ptr0, len0, insertions, _use_staged);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string} search_term
+ * @param {string | null} [path_prefix]
+ * @param {string | null} [include_pattern]
+ * @param {string | null} [exclude_pattern]
+ * @param {boolean | null} [case_sensitive]
+ * @param {boolean | null} [whole_word]
+ * @param {boolean | null} [use_staged]
+ * @param {number | null} [context_lines]
+ * @param {number | null} [limit]
+ * @returns {any}
+ */
+export function search_files(search_term, path_prefix, include_pattern, exclude_pattern, case_sensitive, whole_word, use_staged, context_lines, limit) {
+    const ptr0 = passStringToWasm0(search_term, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(path_prefix) ? 0 : passStringToWasm0(path_prefix, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(include_pattern) ? 0 : passStringToWasm0(include_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    var ptr3 = isLikeNone(exclude_pattern) ? 0 : passStringToWasm0(exclude_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len3 = WASM_VECTOR_LEN;
+    const ret = wasm.search_files(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, isLikeNone(case_sensitive) ? 0xFFFFFF : case_sensitive ? 1 : 0, isLikeNone(whole_word) ? 0xFFFFFF : whole_word ? 1 : 0, isLikeNone(use_staged) ? 0xFFFFFF : use_staged ? 1 : 0, isLikeNone(context_lines) ? 0x100000001 : (context_lines) >>> 0, isLikeNone(limit) ? 0x100000001 : (limit) >>> 0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string | null} [path_prefix]
+ * @param {string | null} [glob_pattern]
+ * @param {boolean | null} [use_staged]
+ * @param {number | null} [limit]
+ * @param {number | null} [offset]
+ * @returns {any}
+ */
+export function list_files_from_wasm(path_prefix, glob_pattern, use_staged, limit, offset) {
+    var ptr0 = isLikeNone(path_prefix) ? 0 : passStringToWasm0(path_prefix, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(glob_pattern) ? 0 : passStringToWasm0(glob_pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.list_files_from_wasm(ptr0, len0, ptr1, len1, isLikeNone(use_staged) ? 0xFFFFFF : use_staged ? 1 : 0, isLikeNone(limit) ? 0x100000001 : (limit) >>> 0, isLikeNone(offset) ? 0x100000001 : (offset) >>> 0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+export function init() {
+    wasm.init();
+}
+
+/**
+ * @returns {string}
+ */
+export function ping() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.ping();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * @returns {number}
+ */
+export function file_count() {
+    const ret = wasm.file_count();
+    return ret >>> 0;
+}
+
+/**
+ * @returns {any}
+ */
+export function get_index_stats() {
+    const ret = wasm.get_index_stats();
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+export function clear_index() {
+    const ret = wasm.clear_index();
+    if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
+    }
+}
+
+export function begin_file_load() {
+    const ret = wasm.begin_file_load();
+    if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
+    }
+}
+
+/**
+ * @param {string[]} paths
+ * @param {Uint8Array[]} contents
+ * @param {Float64Array} mtimes
+ * @param {boolean[]} permissions
+ * @returns {number}
+ */
+export function load_file_batch(paths, contents, mtimes, permissions) {
+    const ptr0 = passArrayJsValueToWasm0(paths, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayJsValueToWasm0(contents, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArrayF64ToWasm0(mtimes, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ptr3 = passArrayJsValueToWasm0(permissions, wasm.__wbindgen_malloc);
+    const len3 = WASM_VECTOR_LEN;
+    const ret = wasm.load_file_batch(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+}
+
+/**
+ * @param {string[]} paths
+ * @param {Uint8Array[]} contents
+ * @param {Float64Array} mtimes
+ * @param {boolean[]} permissions
+ * @param {string[] | null} [text_contents]
+ * @returns {number}
+ */
+export function load_file_batch_with_text(paths, contents, mtimes, permissions, text_contents) {
+    const ptr0 = passArrayJsValueToWasm0(paths, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayJsValueToWasm0(contents, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArrayF64ToWasm0(mtimes, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ptr3 = passArrayJsValueToWasm0(permissions, wasm.__wbindgen_malloc);
+    const len3 = WASM_VECTOR_LEN;
+    var ptr4 = isLikeNone(text_contents) ? 0 : passArrayJsValueToWasm0(text_contents, wasm.__wbindgen_malloc);
+    var len4 = WASM_VECTOR_LEN;
+    const ret = wasm.load_file_batch_with_text(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+}
+
+/**
+ * @returns {number}
+ */
+export function commit_file_load() {
+    const ret = wasm.commit_file_load();
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+}
+
+/**
+ * @param {string} path
+ * @param {Uint8Array | null | undefined} content
+ * @param {boolean} allow_overwrite
+ * @returns {any}
+ */
+export function create_index_file(path, content, allow_overwrite) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.create_index_file(ptr0, len0, isLikeNone(content) ? 0 : addToExternrefTable0(content), allow_overwrite);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string} path
+ * @returns {any}
+ */
+export function delete_file(path) {
+    const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.delete_file(ptr0, len0);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -699,6 +687,18 @@ export function copy_file(src, dst) {
 }
 
 /**
+ * @param {Array<any>} operations
+ * @returns {any}
+ */
+export function copy_files(operations) {
+    const ret = wasm.copy_files(operations);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * @param {string} src
  * @param {string} dst
  * @returns {any}
@@ -709,6 +709,18 @@ export function move_file(src, dst) {
     const ptr1 = passStringToWasm0(dst, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
     const ret = wasm.move_file(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {Array<any>} operations
+ * @returns {any}
+ */
+export function move_files(operations) {
+    const ret = wasm.move_files(operations);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -768,6 +780,20 @@ function __wbg_get_imports() {
         const ret = arg0[arg1 >>> 0];
         return ret;
     };
+    imports.wbg.__wbg_get_458e874b43b18b25 = function() { return handleError(function (arg0, arg1) {
+        const ret = Reflect.get(arg0, arg1);
+        return ret;
+    }, arguments) };
+    imports.wbg.__wbg_instanceof_Object_fbf5fef4952ff29b = function(arg0) {
+        let result;
+        try {
+            result = arg0 instanceof Object;
+        } catch (_) {
+            result = false;
+        }
+        const ret = result;
+        return ret;
+    };
     imports.wbg.__wbg_isArray_030cce220591fb41 = function(arg0) {
         const ret = Array.isArray(arg0);
         return ret;
@@ -818,10 +844,9 @@ function __wbg_get_imports() {
         getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
     };
-    imports.wbg.__wbg_wbindgenbooleanget_3fe6f642c7d97746 = function(arg0) {
-        const v = arg0;
-        const ret = typeof(v) === 'boolean' ? v : undefined;
-        return isLikeNone(ret) ? 0xFFFFFF : ret ? 1 : 0;
+    imports.wbg.__wbg_valueOf_7785fbf48c0e02e4 = function(arg0) {
+        const ret = arg0.valueOf();
+        return ret;
     };
     imports.wbg.__wbg_wbindgendebugstring_99ef257a3ddda34d = function(arg0, arg1) {
         const ret = debugString(arg1);
@@ -829,14 +854,6 @@ function __wbg_get_imports() {
         const len1 = WASM_VECTOR_LEN;
         getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
-    };
-    imports.wbg.__wbg_wbindgenisnull_f3037694abe4d97a = function(arg0) {
-        const ret = arg0 === null;
-        return ret;
-    };
-    imports.wbg.__wbg_wbindgenisundefined_c4b71d073b92f3c5 = function(arg0) {
-        const ret = arg0 === undefined;
-        return ret;
     };
     imports.wbg.__wbg_wbindgennumberget_f74b4c7525ac05cb = function(arg0, arg1) {
         const obj = arg1;

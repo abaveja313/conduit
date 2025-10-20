@@ -125,38 +125,6 @@ pub struct CreateRequest {
     pub allow_overwrite: bool,
 }
 
-impl CreateRequest {
-    /// Create a new request for an empty file.
-    pub fn empty(path: PathKey) -> Self {
-        Self {
-            path,
-            content: None,
-            allow_overwrite: false,
-        }
-    }
-
-    /// Create a new request with content.
-    pub fn with_content(path: PathKey, content: Vec<u8>) -> Self {
-        Self {
-            path,
-            content: Some(content),
-            allow_overwrite: false,
-        }
-    }
-
-    /// Enable overwriting existing files.
-    pub fn allow_overwrite(mut self) -> Self {
-        self.allow_overwrite = true;
-        self
-    }
-
-    /// Validate the request parameters.
-    pub fn validate(&self) -> Result<()> {
-        // PathKey construction already validates non-empty paths
-        Ok(())
-    }
-}
-
 /// Response after creating a file.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CreateResponse {
@@ -223,15 +191,24 @@ pub struct ReplaceLinesResponse {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct MoveFileRequest {
+pub struct FileOperation {
     pub src: PathKey,
-
     pub dst: PathKey,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct MoveFileResponse {
-    pub dst: PathKey,
+pub struct BatchCopyRequest {
+    pub operations: Vec<FileOperation>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BatchMoveRequest {
+    pub operations: Vec<FileOperation>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BatchOperationResponse {
+    pub count: usize,
 }
 
 /// Search files and return preview excerpts.
@@ -290,8 +267,8 @@ pub trait DiffTool {
 }
 
 pub trait MoveFilesTool {
-    fn run_move_file(&mut self, req: MoveFileRequest) -> Result<MoveFileResponse>;
-    fn run_copy_file(&mut self, req: MoveFileRequest) -> Result<MoveFileResponse>;
+    fn run_copy_files(&mut self, req: BatchCopyRequest) -> Result<BatchOperationResponse>;
+    fn run_move_files(&mut self, req: BatchMoveRequest) -> Result<BatchOperationResponse>;
 }
 
 /// Summary of changes for a modified file
@@ -328,17 +305,24 @@ pub struct DeleteLinesRequest {
     pub line_numbers: Vec<usize>,
 }
 
-/// Request to insert lines into a file.
+/// Single insertion operation.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct InsertLinesRequest {
-    /// Path of the file to modify
-    pub path: PathKey,
+pub struct InsertOperation {
     /// Line number where to insert (1-based)
     pub line_number: usize,
     /// Content to insert
     pub content: String,
     /// Insert before or after the line
     pub position: InsertPosition,
+}
+
+/// Request to insert lines into a file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct InsertLinesRequest {
+    /// Path of the file to modify
+    pub path: PathKey,
+    /// List of insertions to perform
+    pub insertions: Vec<InsertOperation>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -350,12 +334,13 @@ pub enum InsertPosition {
 pub mod prelude {
     //! Common imports for consumers of this crate.
     pub use super::{
-        AbortFlag, CreateRequest, CreateResponse, CreateTool, DeleteLinesRequest, DeleteLinesTool,
-        DeleteRequest, DeleteResponse, DeleteTool, DiffTool, EditItem, EditRequest, EditResponse,
-        EditTool, Error, FileChangeStatus, FileDiff, FindRequest, FindResponse, FindTool, Index,
-        IndexManager, InsertLinesRequest, InsertLinesTool, InsertPosition, Match,
-        ModifiedFileSummary, MoveFileRequest, MoveFileResponse, MoveFilesTool, PathKey,
-        PreviewBuilder, PreviewHunk, ReadRequest, ReadResponse, ReadTool, RegexEngineOpts,
-        ReplaceLinesRequest, ReplaceLinesResponse, ReplaceLinesTool, Result, SearchSpace,
+        AbortFlag, BatchCopyRequest, BatchMoveRequest, BatchOperationResponse, CreateRequest,
+        CreateResponse, CreateTool, DeleteLinesRequest, DeleteLinesTool, DeleteRequest,
+        DeleteResponse, DeleteTool, DiffTool, EditItem, EditRequest, EditResponse, EditTool, Error,
+        FileChangeStatus, FileDiff, FileOperation, FindRequest, FindResponse, FindTool, Index,
+        IndexManager, InsertLinesRequest, InsertLinesTool, InsertOperation, InsertPosition, Match,
+        ModifiedFileSummary, MoveFilesTool, PathKey, PreviewBuilder, PreviewHunk, ReadRequest,
+        ReadResponse, ReadTool, RegexEngineOpts, ReplaceLinesRequest, ReplaceLinesResponse,
+        ReplaceLinesTool, Result, SearchSpace,
     };
 }

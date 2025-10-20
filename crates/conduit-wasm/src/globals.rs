@@ -16,17 +16,14 @@ thread_local! {
 }
 
 /// Global index manager for file management.
-#[allow(dead_code)]
 pub(crate) static INDEX_MANAGER: Lazy<IndexManager> = Lazy::new(IndexManager::default);
 
 /// Get a reference to the global index manager.
-#[allow(dead_code)]
 pub fn get_index_manager() -> &'static IndexManager {
     &INDEX_MANAGER
 }
 
 /// Intern a normalized path string.
-#[allow(dead_code)]
 pub fn intern_path(normalized: &str) -> Arc<str> {
     PATH_POOL.with(|pool| {
         let mut pool = pool.borrow_mut();
@@ -40,7 +37,6 @@ pub fn intern_path(normalized: &str) -> Arc<str> {
 /// Create a PathKey from a raw path string.
 ///
 /// This handles normalization and interning in one step.
-#[allow(dead_code)]
 pub fn create_path_key(path: &str) -> Result<PathKey> {
     let normalized = normalize_path(path)?;
     let arc = intern_path(&normalized);

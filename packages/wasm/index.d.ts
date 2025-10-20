@@ -301,6 +301,30 @@ export function insert_after_line(
 };
 
 /**
+ * Insert multiple lines at various positions in a file.
+ * @param path - The file path to modify
+ * @param insertions - Array of insertion operations
+ * @param use_staged - If true, modify staged index; otherwise modify active index
+ * @returns Same as replace_lines - object with modification stats
+ * @throws {Error} If file not found or line numbers invalid
+ */
+export function insert_lines(
+  path: string,
+  insertions: Array<{
+    lineNumber: number;
+    content: string;
+    position: 'before' | 'after';
+  }>,
+  use_staged: boolean
+): {
+  path: string;
+  linesReplaced: number;
+  linesAdded: number;
+  totalLines: number;
+  originalLines: number;
+};
+
+/**
  * List files from the index with pagination support.
  * @param start - Starting index (0-based, inclusive)
  * @param stop - Ending index (exclusive). If 0, returns all files from start.
@@ -353,6 +377,16 @@ export function copy_file(src: string, dst: string): {
 };
 
 /**
+ * Copy multiple files in a batch operation.
+ * @param operations - Array of copy operations with src and dst paths
+ * @returns Object containing the count of files copied
+ * @throws {Error} If any source file not found or staging not active
+ */
+export function copy_files(operations: Array<{ src: string; dst: string }>): {
+  count: number;
+};
+
+/**
  * Move (rename) a file in the staged index.
  * @param src - Source file path
  * @param dst - Destination file path
@@ -361,6 +395,16 @@ export function copy_file(src: string, dst: string): {
  */
 export function move_file(src: string, dst: string): {
   dst: string;
+};
+
+/**
+ * Move multiple files in a batch operation.
+ * @param operations - Array of move operations with src and dst paths
+ * @returns Object containing the count of files moved
+ * @throws {Error} If any source file not found or staging not active
+ */
+export function move_files(operations: Array<{ src: string; dst: string }>): {
+  count: number;
 };
 
 /**

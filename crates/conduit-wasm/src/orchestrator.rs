@@ -2,11 +2,11 @@
 
 use crate::{current_unix_timestamp, globals::get_index_manager};
 use conduit_core::fs::FileEntry;
+use conduit_core::prelude::*;
 use conduit_core::tools::{
     apply_line_operations, compute_diff, extract_lines, for_each_match, LineIndex, LineOperation,
     PreviewBuilder,
 };
-use conduit_core::{prelude::*, MoveFileRequest, MoveFileResponse};
 use conduit_core::{MoveFilesTool, RegexMatcher};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
@@ -15,7 +15,6 @@ pub struct Orchestrator {
 }
 
 impl Orchestrator {
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             index_manager: get_index_manager(),
@@ -140,14 +139,13 @@ impl Orchestrator {
         let size = entry.size();
 
         let line_count = if let Some(bytes) = entry.search_content() {
-            String::from_utf8_lossy(bytes).lines().count()
+            bytes.iter().filter(|&&b| b == b'\n').count() + 1
         } else {
             0
         };
 
         self.index_manager.stage_file(req.path.clone(), entry)?;
 
-        // Track line stats for created or overwritten files
         if !exists {
             // New file - all lines are added
             self.index_manager
@@ -186,46 +184,59 @@ impl Orchestrator {
         })
     }
 
-    pub fn handle_copy_file(&self, req: MoveFileRequest) -> Result<MoveFileResponse> {
+    fn copy_single_file(&self, src: &PathKey, dst: &PathKey) -> Result<()> {
         let staged = self.index_manager.staged_index()?;
         let src_entry = staged
-            .get_file(&req.src)
-            .ok_or_else(|| Error::FileNotFound(req.src.as_str().to_string()))?;
+            .get_file(src)
+            .ok_or_else(|| Error::FileNotFound(src.as_str().to_string()))?;
 
         let original_bytes = src_entry.bytes().ok_or_else(|| {
-            Error::MissingContent(format!("No original bytes for: {}", req.src.as_str()))
+            Error::MissingContent(format!("No original bytes for: {}", src.as_str()))
         })?;
 
+        let line_count = original_bytes.iter().filter(|&&b| b == b'\n').count() + 1;
         let src_content = String::from_utf8_lossy(original_bytes).to_string();
-        let line_count = src_content.lines().count();
 
-        self.stage_file_with_content(&req.dst, src_content)?;
+        self.stage_file_with_content(dst, src_content)?;
 
-        // Track line stats for the copied file
-        // Check if destination already exists to calculate proper delta
-        if let Ok(active_content) = self.get_file_content(&req.dst, SearchSpace::Active) {
-            // File exists in active index - it's a replacement
+        if let Ok(active_content) = self.get_file_content(dst, SearchSpace::Active) {
             let original_lines = active_content.lines().count();
-            // For a complete replacement: all old lines removed, all new lines added
             self.index_manager.update_line_stats(
-                &req.dst,
-                line_count as isize,     // All new lines are added
-                original_lines as isize, // All old lines are removed
+                dst,
+                line_count as isize,
+                original_lines as isize,
                 line_count,
             )?;
         } else {
-            // New file - all lines are added
             self.index_manager
-                .update_line_stats(&req.dst, line_count as isize, 0, line_count)?;
+                .update_line_stats(dst, line_count as isize, 0, line_count)?;
         }
 
-        Ok(MoveFileResponse { dst: req.dst })
+        Ok(())
     }
 
-    pub fn handle_move_file(&self, req: MoveFileRequest) -> Result<MoveFileResponse> {
-        self.index_manager
-            .move_staged_file(&req.src, &req.dst, current_unix_timestamp())?;
-        Ok(MoveFileResponse { dst: req.dst })
+    pub fn handle_copy_files(&self, req: BatchCopyRequest) -> Result<BatchOperationResponse> {
+        let count = req.operations.len();
+        self.index_manager.with_snapshot(|| {
+            for operation in &req.operations {
+                self.copy_single_file(&operation.src, &operation.dst)?;
+            }
+            Ok(BatchOperationResponse { count })
+        })
+    }
+
+    pub fn handle_move_files(&self, req: BatchMoveRequest) -> Result<BatchOperationResponse> {
+        let count = req.operations.len();
+        self.index_manager.with_snapshot(|| {
+            for operation in &req.operations {
+                self.index_manager.move_staged_file(
+                    &operation.src,
+                    &operation.dst,
+                    current_unix_timestamp(),
+                )?;
+            }
+            Ok(BatchOperationResponse { count })
+        })
     }
 
     fn get_file_content(&self, path: &PathKey, where_: SearchSpace) -> Result<String> {
@@ -242,7 +253,7 @@ impl Orchestrator {
             Error::MissingContent(format!("File has no content: {}", path.as_str()))
         })?;
 
-        Ok(String::from_utf8_lossy(content).to_string())
+        Ok(String::from_utf8_lossy(content).into_owned())
     }
 
     fn stage_file_with_content(&self, path: &PathKey, content: String) -> Result<()> {
@@ -262,129 +273,132 @@ impl Orchestrator {
     }
 
     pub fn handle_replace_lines(&self, req: ReplaceLinesRequest) -> Result<ReplaceLinesResponse> {
-        let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
-        let original_lines = content.lines().count();
+        self.index_manager.with_snapshot(|| {
+            let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
+            let original_lines = content.lines().count();
 
-        // Convert replacements to LineOperation::ReplaceRange
-        let operations: Vec<LineOperation> = req
-            .replacements
-            .into_iter()
-            .map(
-                |(start_line, end_line, content)| LineOperation::ReplaceRange {
-                    start: start_line,
-                    end: end_line,
-                    content,
-                },
-            )
-            .collect();
+            let operations: Vec<LineOperation> = req
+                .replacements
+                .into_iter()
+                .map(
+                    |(start_line, end_line, content)| LineOperation::ReplaceRange {
+                        start: start_line,
+                        end: end_line,
+                        content,
+                    },
+                )
+                .collect();
 
-        let (modified_content, lines_added, lines_removed) =
-            apply_line_operations(&content, operations);
-        let total_lines = modified_content.lines().count();
+            let (modified_content, lines_added, lines_removed) =
+                apply_line_operations(&content, operations);
+            let total_lines = modified_content.lines().count();
 
-        self.stage_file_with_content(&req.path, modified_content)?;
+            self.stage_file_with_content(&req.path, modified_content)?;
+            self.index_manager.update_line_stats(
+                &req.path,
+                lines_added as isize,
+                lines_removed as isize,
+                total_lines,
+            )?;
 
-        // Update line stats with actual lines added and removed
-        self.index_manager.update_line_stats(
-            &req.path,
-            lines_added as isize,
-            lines_removed as isize,
-            total_lines,
-        )?;
-
-        Ok(ReplaceLinesResponse {
-            path: req.path,
-            lines_replaced: lines_removed, // Report actual lines replaced
-            lines_added: lines_added as isize - lines_removed as isize, // Net change for backward compatibility
-            total_lines,
-            original_lines,
+            Ok(ReplaceLinesResponse {
+                path: req.path,
+                lines_replaced: lines_removed,
+                lines_added: lines_added as isize - lines_removed as isize,
+                total_lines,
+                original_lines,
+            })
         })
     }
 
     pub fn handle_delete_lines(&self, req: DeleteLinesRequest) -> Result<ReplaceLinesResponse> {
-        let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
-        let original_lines = content.lines().count();
+        self.index_manager.with_snapshot(|| {
+            let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
+            let original_lines = content.lines().count();
 
-        // Convert line deletions to DeleteRange operations
-        // Group consecutive lines into ranges for efficiency
-        let mut operations: Vec<LineOperation> = Vec::new();
-        let mut sorted_lines = req.line_numbers;
-        sorted_lines.sort();
+            let mut sorted_lines = req.line_numbers;
+            sorted_lines.sort_unstable();
+            sorted_lines.dedup();
 
-        let mut i = 0;
-        while i < sorted_lines.len() {
-            let start = sorted_lines[i];
-            let mut end = start;
+            let mut operations = Vec::new();
+            let mut iter = sorted_lines.into_iter();
 
-            // Find consecutive lines
-            while i + 1 < sorted_lines.len() && sorted_lines[i + 1] == end + 1 {
-                i += 1;
-                end = sorted_lines[i];
+            if let Some(mut start) = iter.next() {
+                let mut end = start;
+
+                for line in iter {
+                    if line == end + 1 {
+                        end = line;
+                    } else {
+                        operations.push(LineOperation::DeleteRange { start, end });
+                        start = line;
+                        end = line;
+                    }
+                }
+                operations.push(LineOperation::DeleteRange { start, end });
             }
 
-            operations.push(LineOperation::DeleteRange { start, end });
-            i += 1;
-        }
+            let (modified_content, lines_added, lines_removed) =
+                apply_line_operations(&content, operations);
+            let total_lines = modified_content.lines().count();
 
-        let (modified_content, lines_added, lines_removed) =
-            apply_line_operations(&content, operations);
-        let total_lines = modified_content.lines().count();
+            self.stage_file_with_content(&req.path, modified_content)?;
+            self.index_manager.update_line_stats(
+                &req.path,
+                lines_added as isize,
+                lines_removed as isize,
+                total_lines,
+            )?;
 
-        self.stage_file_with_content(&req.path, modified_content)?;
-
-        // Update line stats with actual lines added and removed
-        self.index_manager.update_line_stats(
-            &req.path,
-            lines_added as isize,
-            lines_removed as isize,
-            total_lines,
-        )?;
-
-        Ok(ReplaceLinesResponse {
-            path: req.path,
-            lines_replaced: lines_removed, // Report actual lines removed
-            lines_added: -(lines_removed as isize), // Negative for deletions
-            total_lines,
-            original_lines,
+            Ok(ReplaceLinesResponse {
+                path: req.path,
+                lines_replaced: lines_removed,
+                lines_added: -(lines_removed as isize),
+                total_lines,
+                original_lines,
+            })
         })
     }
 
     pub fn handle_insert_lines(&self, req: InsertLinesRequest) -> Result<ReplaceLinesResponse> {
-        // Insert operations always work on staged files
-        let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
-        let original_lines = content.lines().count();
+        self.index_manager.with_snapshot(|| {
+            let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
+            let original_lines = content.lines().count();
 
-        let operation = match req.position {
-            InsertPosition::Before => LineOperation::InsertBefore {
-                line: req.line_number,
-                content: req.content,
-            },
-            InsertPosition::After => LineOperation::InsertAfter {
-                line: req.line_number,
-                content: req.content,
-            },
-        };
+            let operations: Vec<LineOperation> = req
+                .insertions
+                .into_iter()
+                .map(|insertion| match insertion.position {
+                    InsertPosition::Before => LineOperation::InsertBefore {
+                        line: insertion.line_number,
+                        content: insertion.content,
+                    },
+                    InsertPosition::After => LineOperation::InsertAfter {
+                        line: insertion.line_number,
+                        content: insertion.content,
+                    },
+                })
+                .collect();
 
-        let operations = vec![operation];
-        let (modified_content, lines_added, lines_removed) =
-            apply_line_operations(&content, operations);
-        let total_lines = modified_content.lines().count();
+            let (modified_content, lines_added, lines_removed) =
+                apply_line_operations(&content, operations);
+            let total_lines = modified_content.lines().count();
 
-        self.stage_file_with_content(&req.path, modified_content)?;
+            self.stage_file_with_content(&req.path, modified_content)?;
+            self.index_manager.update_line_stats(
+                &req.path,
+                lines_added as isize,
+                lines_removed as isize,
+                total_lines,
+            )?;
 
-        self.index_manager.update_line_stats(
-            &req.path,
-            lines_added as isize,
-            lines_removed as isize,
-            total_lines,
-        )?;
-
-        Ok(ReplaceLinesResponse {
-            path: req.path,
-            lines_replaced: 0,                 // No lines replaced for insertions
-            lines_added: lines_added as isize, // Actual lines added
-            total_lines,
-            original_lines,
+            Ok(ReplaceLinesResponse {
+                path: req.path,
+                lines_replaced: 0,
+                lines_added: lines_added as isize,
+                total_lines,
+                original_lines,
+            })
         })
     }
 }
@@ -444,12 +458,12 @@ impl InsertLinesTool for Orchestrator {
 }
 
 impl MoveFilesTool for Orchestrator {
-    fn run_copy_file(&mut self, req: MoveFileRequest) -> Result<MoveFileResponse> {
-        self.handle_copy_file(req)
+    fn run_copy_files(&mut self, req: BatchCopyRequest) -> Result<BatchOperationResponse> {
+        self.handle_copy_files(req)
     }
 
-    fn run_move_file(&mut self, req: MoveFileRequest) -> Result<MoveFileResponse> {
-        self.handle_move_file(req)
+    fn run_move_files(&mut self, req: BatchMoveRequest) -> Result<BatchOperationResponse> {
+        self.handle_move_files(req)
     }
 }
 
@@ -548,9 +562,7 @@ impl DiffTool for Orchestrator {
         // Get content, treating missing files as empty
         let active_content = match active_index.get_file(path) {
             Some(entry) => match entry.search_content() {
-                Some(bytes) => std::str::from_utf8(bytes)
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|_| String::from_utf8_lossy(bytes).to_string()),
+                Some(bytes) => String::from_utf8_lossy(bytes).into_owned(),
                 None => String::new(),
             },
             None => String::new(),
@@ -558,9 +570,7 @@ impl DiffTool for Orchestrator {
 
         let staged_content = match staged_index.get_file(path) {
             Some(entry) => match entry.search_content() {
-                Some(bytes) => std::str::from_utf8(bytes)
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|_| String::from_utf8_lossy(bytes).to_string()),
+                Some(bytes) => String::from_utf8_lossy(bytes).into_owned(),
                 None => String::new(),
             },
             None => String::new(),

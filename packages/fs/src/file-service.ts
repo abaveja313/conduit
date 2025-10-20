@@ -68,9 +68,11 @@ export const deleteLinesSchema = z.object({
 
 export const insertLinesSchema = z.object({
     path: z.string().describe('File path to modify'),
-    lineNumber: z.number().int().positive().describe('Line number where to insert (1-based)'),
-    content: z.string().describe('Content to insert (can be multi-line)'),
-    position: z.enum(['before', 'after']).describe('Insert before or after the specified line'),
+    insertions: z.array(z.object({
+        lineNumber: z.number().int().positive().describe('Line number where to insert (1-based)'),
+        content: z.string().describe('Content to insert (can be multi-line)'),
+        position: z.enum(['before', 'after']).describe('Insert before or after the specified line')
+    })).describe('Array of insertions to perform'),
     useStaged: z.boolean().default(true).describe('If true, modify staged index; otherwise modify active index')
 });
 
@@ -78,14 +80,18 @@ export const readEntireFileSchema = z.object({
     path: z.string().describe('File path to read from staged WASM index')
 });
 
-export const copyFileSchema = z.object({
-    src: z.string().describe('Source file path to copy from'),
-    dst: z.string().describe('Destination file path to copy to')
+export const copyFilesSchema = z.object({
+    operations: z.array(z.object({
+        src: z.string().describe('Source file path to copy from'),
+        dst: z.string().describe('Destination file path to copy to')
+    })).describe('Array of copy operations to perform')
 });
 
-export const moveFileSchema = z.object({
-    src: z.string().describe('Source file path to move from'),
-    dst: z.string().describe('Destination file path to move to')
+export const moveFilesSchema = z.object({
+    operations: z.array(z.object({
+        src: z.string().describe('Source file path to move from'),
+        dst: z.string().describe('Destination file path to move to')
+    })).describe('Array of move operations to perform')
 });
 
 export type ReadFileParams = z.infer<typeof readFileSchema>;
@@ -97,8 +103,8 @@ export type ReplaceLinesParams = z.infer<typeof replaceLinesSchema>;
 export type DeleteLinesParams = z.infer<typeof deleteLinesSchema>;
 export type InsertLinesParams = z.infer<typeof insertLinesSchema>;
 export type ReadEntireFileParams = z.infer<typeof readEntireFileSchema>;
-export type CopyFileParams = z.infer<typeof copyFileSchema>;
-export type MoveFileParams = z.infer<typeof moveFileSchema>;
+export type CopyFilesParams = z.infer<typeof copyFilesSchema>;
+export type MoveFilesParams = z.infer<typeof moveFilesSchema>;
 
 
 /**
@@ -108,6 +114,7 @@ export type MoveFileParams = z.infer<typeof moveFileSchema>;
 export class FileService {
     private fileManager: FileManager;
     private wasmInitialized = false;
+    private lastFileOperations = new Map<string, string>();
 
     constructor(config?: FileManagerConfig) {
         this.fileManager = new FileManager(config);
@@ -159,6 +166,8 @@ export class FileService {
                 const lineNum = result.startLine + index;
                 return { [lineNum]: content };
             });
+
+            this.lastFileOperations.set(normalizedPath, 'read');
 
             return {
                 path: normalizedPath,
@@ -413,9 +422,17 @@ export class FileService {
         const validated = replaceLinesSchema.parse(params);
         await this.ensureWasmInitialized();
 
+        const normalizedPath = normalizePath(validated.path);
+        if (this.lastFileOperations.get(normalizedPath) !== 'read') {
+            throw new Error(
+                `Cannot replace lines in '${validated.path}' without reading the file first. ` +
+                `Call readFile() before using replaceLines() to ensure line numbers are accurate.`
+            );
+        }
+
         try {
             const result = wasm.replace_lines(
-                validated.path,
+                normalizedPath,
                 validated.replacements as Array<[number, string]>,
                 validated.useStaged
             );
@@ -442,9 +459,17 @@ export class FileService {
         const validated = deleteLinesSchema.parse(params);
         await this.ensureWasmInitialized();
 
+        const normalizedPath = normalizePath(validated.path);
+        if (this.lastFileOperations.get(normalizedPath) !== 'read') {
+            throw new Error(
+                `Cannot delete lines in '${validated.path}' without reading the file first. ` +
+                `Call readFile() before using deleteLines() to ensure line numbers are accurate.`
+            );
+        }
+
         try {
             const result = wasm.delete_lines(
-                validated.path,
+                normalizedPath,
                 validated.lineNumbers,
                 validated.useStaged
             );
@@ -458,9 +483,6 @@ export class FileService {
         }
     }
 
-    /**
-     * Insert lines before or after a specific line
-     */
     async insertLines(params: InsertLinesParams): Promise<{
         path: string;
         linesReplaced: number;
@@ -471,63 +493,56 @@ export class FileService {
         const validated = insertLinesSchema.parse(params);
         await this.ensureWasmInitialized();
 
+        const normalizedPath = normalizePath(validated.path);
+        if (this.lastFileOperations.get(normalizedPath) !== 'read') {
+            throw new Error(
+                `Cannot insert lines in '${validated.path}' without reading the file first. ` +
+                `Call readFile() before using insertLines() to ensure line numbers are accurate.`
+            );
+        }
+
         try {
-            const result = validated.position === 'before'
-                ? wasm.insert_before_line(
-                    validated.path,
-                    validated.lineNumber,
-                    validated.content,
-                    validated.useStaged
-                )
-                : wasm.insert_after_line(
-                    validated.path,
-                    validated.lineNumber,
-                    validated.content,
-                    validated.useStaged
-                );
+            const result = wasm.insert_lines(
+                normalizedPath,
+                validated.insertions,
+                validated.useStaged
+            );
             return result;
         } catch (error) {
             throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
                 operation: 'insert_lines',
                 path: validated.path,
-                lineNumber: validated.lineNumber,
-                position: validated.position
+                insertionCount: validated.insertions.length
             });
         }
     }
 
-    async copyFile(params: CopyFileParams): Promise<{
-        dst: string;
-    }> {
-        const validated = copyFileSchema.parse(params);
+    async copyFiles(params: CopyFilesParams): Promise<{ count: number }> {
+        const validated = copyFilesSchema.parse(params);
         await this.ensureWasmInitialized();
 
         try {
-            const result = wasm.copy_file(validated.src, validated.dst);
+            const result = wasm.copy_files(validated.operations);
             return result;
         } catch (error) {
             throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
-                operation: 'copy_file',
-                src: validated.src,
-                dst: validated.dst
+                operation: 'copy_files',
+                operationCount: validated.operations.length
             });
         }
     }
 
-    async moveFile(params: MoveFileParams): Promise<{
-        dst: string;
-    }> {
-        const validated = moveFileSchema.parse(params);
+    async moveFiles(params: MoveFilesParams): Promise<{ count: number }> {
+        const validated = moveFilesSchema.parse(params);
         await this.ensureWasmInitialized();
 
         try {
-            const result = wasm.move_file(validated.src, validated.dst);
+            const result = wasm.move_files(validated.operations);
             return result;
         } catch (error) {
             throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
-                operation: 'move_file',
-                src: validated.src,
-                dst: validated.dst
+                operation: 'move_files',
+                operationCount: validated.operations.length
             });
         }
     }
@@ -540,6 +555,7 @@ export class FileService {
 
         try {
             wasm.begin_index_staging();
+            this.lastFileOperations.clear();
         } catch (error) {
             throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
                 operation: 'begin_staging'
@@ -577,6 +593,8 @@ export class FileService {
             if (deletionStats.succeeded > 0 || deletionStats.failed > 0) {
                 logger.debug(`Deletions: ${deletionStats.succeeded} succeeded, ${deletionStats.failed} failed`);
             }
+
+            this.lastFileOperations.clear();
 
             return {
                 fileCount: result.fileCount,
@@ -647,6 +665,7 @@ export class FileService {
 
         try {
             wasm.revert_index_staging();
+            this.lastFileOperations.clear();
         } catch (error) {
             throw wrapError(error, ErrorCodes.INTERNAL_ERROR, {
                 operation: 'revert_changes'
@@ -755,38 +774,38 @@ export class FileService {
                 }
             },
             replaceLines: {
-                description: 'Replace specific lines or line ranges in a file in the STAGED index. Provide either [lineNumber, newContent] for single line replacement or [startLine, endLine, newContent] for range replacement (1-based line numbers, inclusive). When replacing a range, all lines from startLine to endLine are replaced with the new content. Supports multi-line content - newlines in content create multiple lines. Returns linesReplaced, linesAdded (can be negative if shrinking), totalLines, and originalLines. Changes are held in memory only until committed. Cannot be used on PDF or DOCX files (they are read-only).',
+                description: 'Replace specific lines or line ranges in a file in the STAGED index. Provide either [lineNumber, newContent] for single line replacement or [startLine, endLine, newContent] for range replacement (1-based line numbers, inclusive). When replacing a range, all lines from startLine to endLine are replaced with the new content. Supports multi-line content - newlines in content create multiple lines. This is an ATOMIC operation - either all replacements succeed or none do. Returns linesReplaced, linesAdded (can be negative if shrinking), totalLines, and originalLines. Changes are held in memory only until committed. Cannot be used on PDF or DOCX files (they are read-only).',
                 parameters: replaceLinesSchema,
                 execute: async (params: ReplaceLinesParams) => {
                     return this.replaceLines(params);
                 }
             },
             deleteLines: {
-                description: 'Delete specific lines from a file in the STAGED index. Provide an array of line numbers to delete (1-based). The file will shrink by the number of deleted lines. Returns modification stats including linesAdded (negative for deletions). Changes are held in memory only until committed. Cannot be used on PDF or DOCX files (they are read-only).',
+                description: 'Delete specific lines from a file in the STAGED index. Provide an array of line numbers to delete (1-based). The file will shrink by the number of deleted lines. This is an ATOMIC operation - either all deletions succeed or none do. Returns modification stats including linesAdded (negative for deletions). Changes are held in memory only until committed. Cannot be used on PDF or DOCX files (they are read-only).',
                 parameters: deleteLinesSchema,
                 execute: async (params: DeleteLinesParams) => {
                     return this.deleteLines(params);
                 }
             },
             insertLines: {
-                description: 'Insert new content before or after a specific line in the STAGED index. Content can be multi-line. Specify position as "before" or "after". The file will expand by the number of new lines. Returns modification stats. Changes are held in memory only until committed. Cannot be used on PDF or DOCX files (they are read-only).',
+                description: 'Insert new content at multiple locations in the STAGED index. Each insertion specifies a line number, content (can be multi-line), and position ("before" or "after"). Insertions are applied in descending line order to handle shifting correctly. This is an ATOMIC operation - either all insertions succeed or none do. Returns modification stats. Changes are held in memory only until committed. Cannot be used on PDF or DOCX files (they are read-only).',
                 parameters: insertLinesSchema,
                 execute: async (params: InsertLinesParams) => {
                     return this.insertLines(params);
                 }
             },
-            copyFile: {
-                description: 'Copy a file to a new location in the STAGED index. The source file content is copied to the destination path. Both files will exist after the operation. Changes are held in memory only until committed.',
-                parameters: copyFileSchema,
-                execute: async (params: CopyFileParams) => {
-                    return this.copyFile(params);
+            copyFiles: {
+                description: 'Copy multiple files to new locations in the STAGED index. Each operation copies source file content to the destination path. Both source and destination files will exist after the operation. This is an ATOMIC operation - either all copies succeed or none do. Returns the count of files copied. Changes are held in memory only until committed.',
+                parameters: copyFilesSchema,
+                execute: async (params: CopyFilesParams) => {
+                    return this.copyFiles(params);
                 }
             },
-            moveFile: {
-                description: 'Move (rename) a file in the STAGED index. The file is efficiently moved from the source to destination path without copying content. The source path will no longer exist after the operation. Changes are held in memory only until committed.',
-                parameters: moveFileSchema,
-                execute: async (params: MoveFileParams) => {
-                    return this.moveFile(params);
+            moveFiles: {
+                description: 'Move (rename) multiple files in the STAGED index. Each file is efficiently moved from source to destination path without copying content. Source paths will no longer exist after successful moves. This is an ATOMIC operation - either all moves succeed or none do. Returns the count of files moved. Changes are held in memory only until committed.',
+                parameters: moveFilesSchema,
+                execute: async (params: MoveFilesParams) => {
+                    return this.moveFiles(params);
                 }
             }
         };
@@ -808,6 +827,6 @@ export const revertChanges = () => fileService.revertChanges();
 export const replaceLines = (params: ReplaceLinesParams) => fileService.replaceLines(params);
 export const deleteLines = (params: DeleteLinesParams) => fileService.deleteLines(params);
 export const insertLines = (params: InsertLinesParams) => fileService.insertLines(params);
-export const copyFile = (params: CopyFileParams) => fileService.copyFile(params);
-export const moveFile = (params: MoveFileParams) => fileService.moveFile(params);
+export const copyFiles = (params: CopyFilesParams) => fileService.copyFiles(params);
+export const moveFiles = (params: MoveFilesParams) => fileService.moveFiles(params);
 export const getTools = () => fileService.getTools();

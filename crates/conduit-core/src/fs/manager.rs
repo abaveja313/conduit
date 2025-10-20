@@ -327,4 +327,25 @@ impl IndexManager {
         let mut cache = self.line_index_cache.write();
         cache.clear();
     }
+
+    pub fn snapshot_staging(&self) -> Result<Option<StagingState>> {
+        Ok(self.staged.lock().clone())
+    }
+
+    pub fn restore_staging(&self, snapshot: Option<StagingState>) -> Result<()> {
+        *self.staged.lock() = snapshot;
+        Ok(())
+    }
+
+    /// Execute a function with automatic snapshot rollback on error.
+    pub fn with_snapshot<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
+        let snapshot = self.snapshot_staging()?;
+        match f() {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                self.restore_staging(snapshot)?;
+                Err(e)
+            }
+        }
+    }
 }
