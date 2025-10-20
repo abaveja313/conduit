@@ -195,12 +195,13 @@ impl Orchestrator {
         // Track line stats for the copied file
         // Check if destination already exists to calculate proper delta
         if let Ok(active_content) = self.get_file_content(&req.dst, SearchSpace::Active) {
-            // File exists in active index - calculate delta
+            // File exists in active index - it's a replacement
             let original_lines = active_content.lines().count();
+            // For a complete replacement: all old lines removed, all new lines added
             self.index_manager.update_line_stats(
                 &req.dst,
-                line_count as isize,
-                original_lines as isize,
+                line_count as isize,     // All new lines are added
+                original_lines as isize, // All old lines are removed
                 line_count,
             )?;
         } else {
