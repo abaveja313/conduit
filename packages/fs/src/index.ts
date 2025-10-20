@@ -23,12 +23,16 @@ export {
   replaceLines,
   deleteLines,
   insertLines,
+  copyFile,
+  moveFile,
   readFileSchema,
   createFileSchema,
   deleteFileSchema,
   replaceLinesSchema,
   deleteLinesSchema,
-  insertLinesSchema
+  insertLinesSchema,
+  copyFileSchema,
+  moveFileSchema
 } from './file-service.js';
 
 // Types

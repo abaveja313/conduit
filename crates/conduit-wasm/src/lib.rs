@@ -3,7 +3,7 @@
 use crate::globals::{create_path_key, get_index_manager};
 use conduit_core::{
     fs::FileEntry, CreateRequest, CreateResponse, CreateTool, DeleteRequest, DeleteResponse,
-    DeleteTool, SearchSpace,
+    DeleteTool, MoveFileRequest, MoveFilesTool,
 };
 use globset::Glob;
 use js_sys::{Boolean, Date, Uint8Array};
@@ -291,7 +291,7 @@ pub fn get_modified_files_summary() -> Result<JsValue, JsValue> {
     let result_array = js_sys::Array::new();
 
     for summary in summaries {
-        let obj = JsObjectBuilder::new()
+        let mut builder = JsObjectBuilder::new()
             .set("path", JsValue::from_str(summary.path.as_str()))?
             .set("linesAdded", JsValue::from(summary.lines_added as u32))?
             .set("linesRemoved", JsValue::from(summary.lines_removed as u32))?
@@ -301,10 +301,15 @@ pub fn get_modified_files_summary() -> Result<JsValue, JsValue> {
                     conduit_core::FileChangeStatus::Created => "created",
                     conduit_core::FileChangeStatus::Modified => "modified",
                     conduit_core::FileChangeStatus::Deleted => "deleted",
+                    conduit_core::FileChangeStatus::Moved => "moved",
                 }),
-            )?
-            .build();
+            )?;
 
+        if let Some(moved_to) = summary.moved_to {
+            builder = builder.set("movedTo", JsValue::from_str(moved_to.as_str()))?;
+        }
+
+        let obj = builder.build();
         result_array.push(&obj);
     }
 
@@ -460,7 +465,7 @@ pub fn read_file_lines(
     use_staged: bool,
 ) -> Result<JsValue, JsValue> {
     use crate::orchestrator::Orchestrator;
-    use conduit_core::ReadTool;
+    use conduit_core::{ReadTool, SearchSpace};
 
     let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
 
@@ -719,10 +724,10 @@ pub fn delete_index_file(path: String) -> Result<JsValue, JsValue> {
 pub fn replace_lines(
     path: String,
     replacements: js_sys::Array,
-    use_staged: bool,
+    _use_staged: bool,
 ) -> Result<JsValue, JsValue> {
     use crate::orchestrator::Orchestrator;
-    use conduit_core::{ReplaceLinesRequest, ReplaceLinesTool, SearchSpace};
+    use conduit_core::{ReplaceLinesRequest, ReplaceLinesTool};
 
     let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
 
@@ -784,11 +789,6 @@ pub fn replace_lines(
     let request = ReplaceLinesRequest {
         path: path_key,
         replacements: line_replacements,
-        where_: if use_staged {
-            SearchSpace::Staged
-        } else {
-            SearchSpace::Active
-        },
     };
 
     let mut orchestrator = Orchestrator::new();
@@ -823,21 +823,16 @@ pub fn replace_lines(
 pub fn delete_lines(
     path: String,
     line_numbers: Vec<usize>,
-    use_staged: bool,
+    _use_staged: bool,
 ) -> Result<JsValue, JsValue> {
     use crate::orchestrator::Orchestrator;
-    use conduit_core::{DeleteLinesRequest, DeleteLinesTool, SearchSpace};
+    use conduit_core::{DeleteLinesRequest, DeleteLinesTool};
 
     let path_key = create_path_key(&path).map_err(|e| js_err!("Invalid path '{}': {}", path, e))?;
 
     let request = DeleteLinesRequest {
         path: path_key,
         line_numbers,
-        where_: if use_staged {
-            SearchSpace::Staged
-        } else {
-            SearchSpace::Active
-        },
     };
 
     let mut orchestrator = Orchestrator::new();
@@ -874,10 +869,10 @@ pub fn insert_before_line(
     path: String,
     line_number: usize,
     content: String,
-    use_staged: bool,
+    _use_staged: bool,
 ) -> Result<JsValue, JsValue> {
     use crate::orchestrator::Orchestrator;
-    use conduit_core::{InsertLinesRequest, InsertLinesTool, InsertPosition, SearchSpace};
+    use conduit_core::{InsertLinesRequest, InsertLinesTool, InsertPosition};
 
     if line_number < 1 {
         return Err(js_err!("Line number must be 1-based"));
@@ -890,11 +885,6 @@ pub fn insert_before_line(
         line_number,
         content,
         position: InsertPosition::Before,
-        where_: if use_staged {
-            SearchSpace::Staged
-        } else {
-            SearchSpace::Active
-        },
     };
 
     let mut orchestrator = Orchestrator::new();
@@ -936,10 +926,10 @@ pub fn insert_after_line(
     path: String,
     line_number: usize,
     content: String,
-    use_staged: bool,
+    _use_staged: bool,
 ) -> Result<JsValue, JsValue> {
     use crate::orchestrator::Orchestrator;
-    use conduit_core::{InsertLinesRequest, InsertLinesTool, InsertPosition, SearchSpace};
+    use conduit_core::{InsertLinesRequest, InsertLinesTool, InsertPosition};
 
     if line_number < 1 {
         return Err(js_err!("Line number must be 1-based"));
@@ -952,11 +942,6 @@ pub fn insert_after_line(
         line_number,
         content,
         position: InsertPosition::After,
-        where_: if use_staged {
-            SearchSpace::Staged
-        } else {
-            SearchSpace::Active
-        },
     };
 
     let mut orchestrator = Orchestrator::new();
@@ -981,6 +966,58 @@ pub fn insert_after_line(
             "originalLines",
             JsValue::from(response.original_lines as u32),
         )?
+        .build();
+
+    Ok(obj)
+}
+
+#[wasm_bindgen]
+pub fn copy_file(src: String, dst: String) -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+
+    let src_key =
+        create_path_key(&src).map_err(|e| js_err!("Invalid source path '{}': {}", src, e))?;
+    let dst_key =
+        create_path_key(&dst).map_err(|e| js_err!("Invalid destination path '{}': {}", dst, e))?;
+
+    let request = MoveFileRequest {
+        src: src_key,
+        dst: dst_key.clone(),
+    };
+
+    let mut orchestrator = Orchestrator::new();
+    let response = orchestrator
+        .run_copy_file(request)
+        .map_err(|e| js_err!("Failed to copy file: {}", e))?;
+
+    let obj = JsObjectBuilder::new()
+        .set("dst", JsValue::from(response.dst.as_str()))?
+        .build();
+
+    Ok(obj)
+}
+
+#[wasm_bindgen]
+pub fn move_file(src: String, dst: String) -> Result<JsValue, JsValue> {
+    use crate::orchestrator::Orchestrator;
+
+    let src_key =
+        create_path_key(&src).map_err(|e| js_err!("Invalid source path '{}': {}", src, e))?;
+    let dst_key =
+        create_path_key(&dst).map_err(|e| js_err!("Invalid destination path '{}': {}", dst, e))?;
+
+    let request = MoveFileRequest {
+        src: src_key,
+        dst: dst_key.clone(),
+    };
+
+    let mut orchestrator = Orchestrator::new();
+    let response = orchestrator
+        .run_move_file(request)
+        .map_err(|e| js_err!("Failed to move file: {}", e))?;
+
+    let obj = JsObjectBuilder::new()
+        .set("dst", JsValue::from(response.dst.as_str()))?
         .build();
 
     Ok(obj)

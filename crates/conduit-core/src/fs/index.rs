@@ -41,6 +41,10 @@ impl FileEntry {
             .to_owned()
     }
 
+    pub fn set_modified(&mut self, mtime: i64) {
+        self.mtime = mtime;
+    }
+
     /// Create metadata-only entry.
     pub fn new(ext: impl Into<String>, size: u64, mtime: i64, editable: bool) -> Self {
         Self {
@@ -173,31 +177,27 @@ impl Index {
         self.files.get(key)
     }
 
-    pub fn can_edit_file(&self, key: &PathKey) -> bool {
-        if let Some(e) = self.files.get(key) {
-            return e.is_editable();
-        }
-        true
+    pub fn take_file(&mut self, key: &PathKey) -> Option<FileEntry> {
+        self.files.remove(key)
     }
 
     /// Insert or update file.
     pub fn upsert_file(&mut self, key: PathKey, entry: FileEntry) -> Result<()> {
-        // Only check editability if the file already exists
-        if self.files.contains_key(&key) && !self.can_edit_file(&key) {
+        if self.files.contains_key(&key) && !entry.is_editable() {
             return Err(Error::ReadOnlyFile(key.into()));
         }
-        // im::HashMap::insert mutates self and returns the old value
         let _old = self.files.insert(key.clone(), entry);
-        // im::OrdSet::insert mutates self and returns whether it was newly inserted
         let _ = self.prefixes.insert(key);
         Ok(())
     }
 
     /// Remove file. Returns whether it existed.
     pub fn remove_file(&mut self, key: &PathKey) -> Result<bool> {
-        if !self.can_edit_file(key) {
-            return Err(Error::ReadOnlyFile(key.clone().into()));
-        }
+        // we can still remove readonly files, just not update them
+        // should eventually rename readonly to modifiable
+        // if !self.can_edit_file(key) {
+        //     return Err(Error::ReadOnlyFile(key.clone().into()));
+        // }
 
         let existed = self.files.remove(key).is_some();
         if existed {

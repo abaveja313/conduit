@@ -20,6 +20,8 @@ Key capabilities:
 - Read PDF and DOCX files (automatically converted to text/HTML, but are READ-ONLY)
 - Create / replace entire files in the STAGED index (changes held in memory)
 - Mark files for deletion in the STAGED index (NOT deleted from disk)
+- Copy files to new locations in the STAGED index
+- Move/rename files efficiently in the STAGED index (tracked properly in diffs)
 - List files with pagination (ALWAYS use limit=250 or less)
 - Search files using regex patterns with context
 - View staged modifications and deletions
@@ -97,6 +99,10 @@ function getToolOperation(toolName: string, args: unknown): string | undefined {
       return 'commit';
     case 'revertChanges':
       return 'revert';
+    case 'copyFile':
+      return 'copy';
+    case 'moveFile':
+      return 'move';
     default:
       return undefined;
   }
@@ -194,7 +200,7 @@ export async function* streamAnthropicResponse(
         const headers = new Headers(options?.headers);
         headers.set('x-anthropic-path', anthropicUrl.pathname);
 
-        // Set API key header: use provided key or "proxy-placeholder" for trial users
+        // Only include user API key if explicitly provided
         if (apiKey && apiKey.trim()) {
           headers.set('x-api-key', apiKey);
           logger.debug('Using user-provided API key');

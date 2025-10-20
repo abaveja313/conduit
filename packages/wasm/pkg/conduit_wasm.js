@@ -553,13 +553,13 @@ export function delete_index_file(path) {
  * Object containing path, lines_replaced, and total_lines
  * @param {string} path
  * @param {Array<any>} replacements
- * @param {boolean} use_staged
+ * @param {boolean} _use_staged
  * @returns {any}
  */
-export function replace_lines(path, replacements, use_staged) {
+export function replace_lines(path, replacements, _use_staged) {
     const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.replace_lines(ptr0, len0, replacements, use_staged);
+    const ret = wasm.replace_lines(ptr0, len0, replacements, _use_staged);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -590,15 +590,15 @@ function passArray32ToWasm0(arg, malloc) {
  * * `use_staged` - If true, modify staged index; otherwise modify active index
  * @param {string} path
  * @param {Uint32Array} line_numbers
- * @param {boolean} use_staged
+ * @param {boolean} _use_staged
  * @returns {any}
  */
-export function delete_lines(path, line_numbers, use_staged) {
+export function delete_lines(path, line_numbers, _use_staged) {
     const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArray32ToWasm0(line_numbers, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.delete_lines(ptr0, len0, ptr1, len1, use_staged);
+    const ret = wasm.delete_lines(ptr0, len0, ptr1, len1, _use_staged);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -616,15 +616,15 @@ export function delete_lines(path, line_numbers, use_staged) {
  * @param {string} path
  * @param {number} line_number
  * @param {string} content
- * @param {boolean} use_staged
+ * @param {boolean} _use_staged
  * @returns {any}
  */
-export function insert_before_line(path, line_number, content, use_staged) {
+export function insert_before_line(path, line_number, content, _use_staged) {
     const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.insert_before_line(ptr0, len0, line_number, ptr1, len1, use_staged);
+    const ret = wasm.insert_before_line(ptr0, len0, line_number, ptr1, len1, _use_staged);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -642,15 +642,49 @@ export function insert_before_line(path, line_number, content, use_staged) {
  * @param {string} path
  * @param {number} line_number
  * @param {string} content
- * @param {boolean} use_staged
+ * @param {boolean} _use_staged
  * @returns {any}
  */
-export function insert_after_line(path, line_number, content, use_staged) {
+export function insert_after_line(path, line_number, content, _use_staged) {
     const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.insert_after_line(ptr0, len0, line_number, ptr1, len1, use_staged);
+    const ret = wasm.insert_after_line(ptr0, len0, line_number, ptr1, len1, _use_staged);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string} src
+ * @param {string} dst
+ * @returns {any}
+ */
+export function copy_file(src, dst) {
+    const ptr0 = passStringToWasm0(src, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(dst, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.copy_file(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * @param {string} src
+ * @param {string} dst
+ * @returns {any}
+ */
+export function move_file(src, dst) {
+    const ptr0 = passStringToWasm0(src, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(dst, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.move_file(ptr0, len0, ptr1, len1);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }

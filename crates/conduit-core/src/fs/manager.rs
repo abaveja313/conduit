@@ -15,6 +15,8 @@ pub struct StagingState {
     modified: IOrdSet<PathKey>,
     /// Track line changes per file for efficient diff stats
     change_stats: im::HashMap<PathKey, FileChangeStats>,
+    /// Track move operations: source -> destination
+    moves: im::HashMap<PathKey, PathKey>,
 }
 
 /// Statistics about changes to a file
@@ -74,6 +76,7 @@ impl IndexManager {
             snapshot: self.active.load_full(),
             modified: IOrdSet::new(),
             change_stats: im::HashMap::new(),
+            moves: im::HashMap::new(),
         });
         Ok(())
     }
@@ -134,6 +137,26 @@ impl IndexManager {
         let idx = Arc::make_mut(&mut staged.snapshot);
         staged.modified.insert(key.clone());
         let _ = idx.remove_file(key)?;
+        Ok(())
+    }
+
+    /// Move a file within the staging area without copying content.
+    pub fn move_staged_file(&self, src: &PathKey, dst: &PathKey, update_mtime: i64) -> Result<()> {
+        let mut g = self.staged.lock();
+        let staged = g.as_mut().ok_or(Error::StagingNotActive)?;
+        let idx = Arc::make_mut(&mut staged.snapshot);
+
+        let mut entry = idx
+            .take_file(src)
+            .ok_or_else(|| Error::FileNotFound(src.clone().into()))?;
+
+        entry.set_modified(update_mtime);
+        staged.modified.insert(src.clone());
+        staged.modified.insert(dst.clone());
+        staged.moves.insert(src.clone(), dst.clone());
+
+        idx.upsert_file(dst.clone(), entry)?;
+
         Ok(())
     }
 
@@ -284,13 +307,19 @@ impl IndexManager {
         // Not in cache, compute it
         let line_index = Arc::new(LineIndex::build(bytes));
 
-        // Store in cache
         {
             let mut cache = self.line_index_cache.write();
             cache.insert(cache_key, Arc::clone(&line_index));
         }
 
         Some(line_index)
+    }
+
+    /// Get move operations from staging
+    pub fn get_staged_moves(&self) -> Result<im::HashMap<PathKey, PathKey>> {
+        let g = self.staged.lock();
+        let staged = g.as_ref().ok_or(Error::StagingNotActive)?;
+        Ok(staged.moves.clone())
     }
 
     /// Clear line index cache (e.g., when promoting staged changes)

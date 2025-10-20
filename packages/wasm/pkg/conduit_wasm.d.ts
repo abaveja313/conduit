@@ -132,7 +132,7 @@ export function delete_index_file(path: string): any;
  * # Returns
  * Object containing path, lines_replaced, and total_lines
  */
-export function replace_lines(path: string, replacements: Array<any>, use_staged: boolean): any;
+export function replace_lines(path: string, replacements: Array<any>, _use_staged: boolean): any;
 /**
  * Delete specific lines from a file.
  *
@@ -141,7 +141,7 @@ export function replace_lines(path: string, replacements: Array<any>, use_staged
  * * `line_numbers` - Array of line numbers to delete (1-based)
  * * `use_staged` - If true, modify staged index; otherwise modify active index
  */
-export function delete_lines(path: string, line_numbers: Uint32Array, use_staged: boolean): any;
+export function delete_lines(path: string, line_numbers: Uint32Array, _use_staged: boolean): any;
 /**
  * Insert new content before a specific line.
  *
@@ -151,7 +151,7 @@ export function delete_lines(path: string, line_numbers: Uint32Array, use_staged
  * * `content` - Content to insert (can be multi-line)
  * * `use_staged` - If true, modify staged index; otherwise modify active index
  */
-export function insert_before_line(path: string, line_number: number, content: string, use_staged: boolean): any;
+export function insert_before_line(path: string, line_number: number, content: string, _use_staged: boolean): any;
 /**
  * Insert new content after a specific line.
  *
@@ -161,7 +161,9 @@ export function insert_before_line(path: string, line_number: number, content: s
  * * `content` - Content to insert (can be multi-line)
  * * `use_staged` - If true, modify staged index; otherwise modify active index
  */
-export function insert_after_line(path: string, line_number: number, content: string, use_staged: boolean): any;
+export function insert_after_line(path: string, line_number: number, content: string, _use_staged: boolean): any;
+export function copy_file(src: string, dst: string): any;
+export function move_file(src: string, dst: string): any;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -193,6 +195,8 @@ export interface InitOutput {
   readonly delete_lines: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
   readonly insert_before_line: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
   readonly insert_after_line: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
+  readonly copy_file: (a: number, b: number, c: number, d: number) => [number, number, number];
+  readonly move_file: (a: number, b: number, c: number, d: number) => [number, number, number];
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;

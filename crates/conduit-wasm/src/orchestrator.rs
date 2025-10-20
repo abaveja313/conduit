@@ -2,12 +2,12 @@
 
 use crate::{current_unix_timestamp, globals::get_index_manager};
 use conduit_core::fs::FileEntry;
-use conduit_core::prelude::*;
 use conduit_core::tools::{
     apply_line_operations, compute_diff, extract_lines, for_each_match, LineIndex, LineOperation,
     PreviewBuilder,
 };
-use conduit_core::RegexMatcher;
+use conduit_core::{prelude::*, MoveFileRequest, MoveFileResponse};
+use conduit_core::{MoveFilesTool, RegexMatcher};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
 pub struct Orchestrator {
@@ -92,15 +92,9 @@ impl Orchestrator {
         Ok(FindResponse { results })
     }
 
-    pub fn handle_edit(&self, req: EditRequest, abort: &AbortFlag) -> Result<EditResponse> {
+    pub fn handle_edit(&self, _req: EditRequest, abort: &AbortFlag) -> Result<EditResponse> {
         abort.reset();
-
-        if req.where_ != SearchSpace::Staged {
-            return Err(Error::InvalidPath(
-                "Edit operations must target staged index".to_string(),
-            ));
-        }
-
+        // not implemented
         Ok(EditResponse { items: Vec::new() })
     }
 
@@ -192,6 +186,18 @@ impl Orchestrator {
         })
     }
 
+    pub fn handle_copy_file(&self, req: MoveFileRequest) -> Result<MoveFileResponse> {
+        let src_content = self.get_file_content(&req.src, SearchSpace::Staged)?;
+        self.stage_file_with_content(&req.dst, src_content)?;
+        Ok(MoveFileResponse { dst: req.dst })
+    }
+
+    pub fn handle_move_file(&self, req: MoveFileRequest) -> Result<MoveFileResponse> {
+        self.index_manager
+            .move_staged_file(&req.src, &req.dst, current_unix_timestamp())?;
+        Ok(MoveFileResponse { dst: req.dst })
+    }
+
     fn get_file_content(&self, path: &PathKey, where_: SearchSpace) -> Result<String> {
         let index = match where_ {
             SearchSpace::Staged => self.index_manager.staged_index()?,
@@ -218,13 +224,7 @@ impl Orchestrator {
     }
 
     pub fn handle_replace_lines(&self, req: ReplaceLinesRequest) -> Result<ReplaceLinesResponse> {
-        if req.where_ != SearchSpace::Staged {
-            return Err(Error::InvalidPath(
-                "Replace lines operations must target staged index".to_string(),
-            ));
-        }
-
-        let content = self.get_file_content(&req.path, req.where_)?;
+        let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
         let original_lines = content.lines().count();
 
         // Convert replacements to LineOperation::ReplaceRange
@@ -264,13 +264,7 @@ impl Orchestrator {
     }
 
     pub fn handle_delete_lines(&self, req: DeleteLinesRequest) -> Result<ReplaceLinesResponse> {
-        if req.where_ != SearchSpace::Staged {
-            return Err(Error::InvalidPath(
-                "Delete lines operations must target staged index".to_string(),
-            ));
-        }
-
-        let content = self.get_file_content(&req.path, req.where_)?;
+        let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
         let original_lines = content.lines().count();
 
         // Convert line deletions to DeleteRange operations
@@ -318,13 +312,8 @@ impl Orchestrator {
     }
 
     pub fn handle_insert_lines(&self, req: InsertLinesRequest) -> Result<ReplaceLinesResponse> {
-        if req.where_ != SearchSpace::Staged {
-            return Err(Error::InvalidPath(
-                "Insert lines operations must target staged index".to_string(),
-            ));
-        }
-
-        let content = self.get_file_content(&req.path, req.where_)?;
+        // Insert operations always work on staged files
+        let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
         let original_lines = content.lines().count();
 
         let operation = match req.position {
@@ -345,7 +334,6 @@ impl Orchestrator {
 
         self.stage_file_with_content(&req.path, modified_content)?;
 
-        // Update line stats with actual lines added and removed
         self.index_manager.update_line_stats(
             &req.path,
             lines_added as isize,
@@ -417,22 +405,62 @@ impl InsertLinesTool for Orchestrator {
     }
 }
 
+impl MoveFilesTool for Orchestrator {
+    fn run_copy_file(&mut self, req: MoveFileRequest) -> Result<MoveFileResponse> {
+        self.handle_copy_file(req)
+    }
+
+    fn run_move_file(&mut self, req: MoveFileRequest) -> Result<MoveFileResponse> {
+        self.handle_move_file(req)
+    }
+}
+
 impl DiffTool for Orchestrator {
     fn get_modified_files_summary(&self) -> Result<Vec<ModifiedFileSummary>> {
         let active_index = self.index_manager.active_index();
+        let staged_index = self.index_manager.staged_index()?;
         let change_stats = self.index_manager.get_change_stats()?;
         let deletions = self.index_manager.get_staged_deletions()?;
+        let moves = self.index_manager.get_staged_moves()?;
 
         let mut summaries = Vec::new();
-
-        // Convert deletions to a HashSet for O(1) lookup
         let deletion_set: std::collections::HashSet<_> = deletions.iter().cloned().collect();
+        let mut processed_moves = std::collections::HashSet::new();
 
-        // Process files with change stats (modified or created files)
-        // Skip files that are in the deletion set to avoid duplicates
+        // Process moves first
+        for (src, dst) in &moves {
+            if deletion_set.contains(src) && staged_index.get_file(dst).is_some() {
+                processed_moves.insert(src.clone());
+                processed_moves.insert(dst.clone());
+
+                // Check if file was also modified during move
+                let stats = change_stats
+                    .iter()
+                    .find(|(p, _)| p == dst)
+                    .map(|(_, s)| s.clone());
+
+                let (lines_added, lines_removed) = if let Some(stats) = stats {
+                    (
+                        stats.lines_added.max(0) as usize,
+                        stats.lines_removed.unsigned_abs(),
+                    )
+                } else {
+                    (0, 0)
+                };
+
+                summaries.push(ModifiedFileSummary {
+                    path: src.clone(),
+                    lines_added,
+                    lines_removed,
+                    status: FileChangeStatus::Moved,
+                    moved_to: Some(dst.clone()),
+                });
+            }
+        }
+
+        // Process other changes
         for (path, stats) in change_stats {
-            // Skip if this file is deleted (will be handled in deletions loop)
-            if deletion_set.contains(&path) {
+            if deletion_set.contains(&path) || processed_moves.contains(&path) {
                 continue;
             }
 
@@ -447,12 +475,16 @@ impl DiffTool for Orchestrator {
                 lines_added: stats.lines_added.max(0) as usize,
                 lines_removed: stats.lines_removed.unsigned_abs(),
                 status,
+                moved_to: None,
             });
         }
 
-        // Process deletions
+        // Process deletions (excluding moves)
         for path in deletions {
-            // Get line count from active index using cached LineIndex
+            if processed_moves.contains(&path) {
+                continue;
+            }
+
             let lines_removed = self
                 .index_manager
                 .get_line_index(&path, &active_index)
@@ -464,6 +496,7 @@ impl DiffTool for Orchestrator {
                 lines_added: 0,
                 lines_removed,
                 status: FileChangeStatus::Deleted,
+                moved_to: None,
             });
         }
 

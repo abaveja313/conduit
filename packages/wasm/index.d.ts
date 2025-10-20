@@ -323,6 +323,28 @@ export function find_in_files(
 }>;
 
 /**
+ * Copy a file to a new location in the staged index.
+ * @param src - Source file path
+ * @param dst - Destination file path
+ * @returns Object containing the destination path
+ * @throws {Error} If source file not found or staging not active
+ */
+export function copy_file(src: string, dst: string): {
+  dst: string;
+};
+
+/**
+ * Move (rename) a file in the staged index.
+ * @param src - Source file path
+ * @param dst - Destination file path
+ * @returns Object containing the destination path
+ * @throws {Error} If source file not found or staging not active
+ */
+export function move_file(src: string, dst: string): {
+  dst: string;
+};
+
+/**
  * Default export for initializing the WASM module
  */
 export default function init(

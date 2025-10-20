@@ -78,6 +78,16 @@ export const readEntireFileSchema = z.object({
     path: z.string().describe('File path to read from staged WASM index')
 });
 
+export const copyFileSchema = z.object({
+    src: z.string().describe('Source file path to copy from'),
+    dst: z.string().describe('Destination file path to copy to')
+});
+
+export const moveFileSchema = z.object({
+    src: z.string().describe('Source file path to move from'),
+    dst: z.string().describe('Destination file path to move to')
+});
+
 export type ReadFileParams = z.infer<typeof readFileSchema>;
 export type CreateFileParams = z.infer<typeof createFileSchema>;
 export type DeleteFileParams = z.infer<typeof deleteFileSchema>;
@@ -87,6 +97,8 @@ export type ReplaceLinesParams = z.infer<typeof replaceLinesSchema>;
 export type DeleteLinesParams = z.infer<typeof deleteLinesSchema>;
 export type InsertLinesParams = z.infer<typeof insertLinesSchema>;
 export type ReadEntireFileParams = z.infer<typeof readEntireFileSchema>;
+export type CopyFileParams = z.infer<typeof copyFileSchema>;
+export type MoveFileParams = z.infer<typeof moveFileSchema>;
 
 
 /**
@@ -483,6 +495,42 @@ export class FileService {
         }
     }
 
+    async copyFile(params: CopyFileParams): Promise<{
+        dst: string;
+    }> {
+        const validated = copyFileSchema.parse(params);
+        await this.ensureWasmInitialized();
+
+        try {
+            const result = wasm.copy_file(validated.src, validated.dst);
+            return result;
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
+                operation: 'copy_file',
+                src: validated.src,
+                dst: validated.dst
+            });
+        }
+    }
+
+    async moveFile(params: MoveFileParams): Promise<{
+        dst: string;
+    }> {
+        const validated = moveFileSchema.parse(params);
+        await this.ensureWasmInitialized();
+
+        try {
+            const result = wasm.move_file(validated.src, validated.dst);
+            return result;
+        } catch (error) {
+            throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
+                operation: 'move_file',
+                src: validated.src,
+                dst: validated.dst
+            });
+        }
+    }
+
     /**
      * Begin a manual staging session
      */
@@ -676,6 +724,20 @@ export class FileService {
                 execute: async (params: InsertLinesParams) => {
                     return this.insertLines(params);
                 }
+            },
+            copyFile: {
+                description: 'Copy a file to a new location in the STAGED index. The source file content is copied to the destination path. Both files will exist after the operation. Changes are held in memory only until committed.',
+                parameters: copyFileSchema,
+                execute: async (params: CopyFileParams) => {
+                    return this.copyFile(params);
+                }
+            },
+            moveFile: {
+                description: 'Move (rename) a file in the STAGED index. The file is efficiently moved from the source to destination path without copying content. The source path will no longer exist after the operation. Changes are held in memory only until committed.',
+                parameters: moveFileSchema,
+                execute: async (params: MoveFileParams) => {
+                    return this.moveFile(params);
+                }
             }
         };
     }
@@ -696,4 +758,6 @@ export const revertChanges = () => fileService.revertChanges();
 export const replaceLines = (params: ReplaceLinesParams) => fileService.replaceLines(params);
 export const deleteLines = (params: DeleteLinesParams) => fileService.deleteLines(params);
 export const insertLines = (params: InsertLinesParams) => fileService.insertLines(params);
+export const copyFile = (params: CopyFileParams) => fileService.copyFile(params);
+export const moveFile = (params: MoveFileParams) => fileService.moveFile(params);
 export const getTools = () => fileService.getTools();

@@ -49,7 +49,7 @@ impl Default for FindRequest {
             find: String::new(),
             delta: 2,
             engine_opts: RegexEngineOpts::default(),
-            where_: SearchSpace::Active,
+            where_: SearchSpace::Staged,
         }
     }
 }
@@ -78,8 +78,6 @@ pub struct EditRequest {
     pub delta: usize,
     /// Regex compilation options.
     pub engine_opts: RegexEngineOpts,
-    /// Target buffer (typically Staged).
-    pub where_: SearchSpace,
 }
 
 impl Default for EditRequest {
@@ -92,7 +90,6 @@ impl Default for EditRequest {
             replace: String::new(),
             delta: 2,
             engine_opts: RegexEngineOpts::default(),
-            where_: SearchSpace::Staged,
         }
     }
 }
@@ -208,8 +205,6 @@ pub struct ReplaceLinesRequest {
     /// List of (start_line, end_line, new_content) replacements
     /// Lines are 1-based and inclusive
     pub replacements: Vec<(usize, usize, String)>,
-    /// Which buffer to target (typically Staged)
-    pub where_: SearchSpace,
 }
 
 /// Response after replacing lines in a file.
@@ -225,6 +220,18 @@ pub struct ReplaceLinesResponse {
     pub total_lines: usize,
     /// Original line count before replacement
     pub original_lines: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MoveFileRequest {
+    pub src: PathKey,
+
+    pub dst: PathKey,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MoveFileResponse {
+    pub dst: PathKey,
 }
 
 /// Search files and return preview excerpts.
@@ -282,6 +289,11 @@ pub trait DiffTool {
     fn get_file_diff(&self, path: &PathKey) -> Result<FileDiff>;
 }
 
+pub trait MoveFilesTool {
+    fn run_move_file(&mut self, req: MoveFileRequest) -> Result<MoveFileResponse>;
+    fn run_copy_file(&mut self, req: MoveFileRequest) -> Result<MoveFileResponse>;
+}
+
 /// Summary of changes for a modified file
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ModifiedFileSummary {
@@ -291,8 +303,11 @@ pub struct ModifiedFileSummary {
     pub lines_added: usize,
     /// Number of lines removed
     pub lines_removed: usize,
-    /// File status (created, modified, deleted)
+    /// File status (created, modified, deleted, moved)
     pub status: FileChangeStatus,
+    /// Destination path for moved files
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub moved_to: Option<PathKey>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -301,6 +316,7 @@ pub enum FileChangeStatus {
     Created,
     Modified,
     Deleted,
+    Moved,
 }
 
 /// Request to delete specific lines from a file.
@@ -310,8 +326,6 @@ pub struct DeleteLinesRequest {
     pub path: PathKey,
     /// Line numbers to delete (1-based)
     pub line_numbers: Vec<usize>,
-    /// Which buffer to target
-    pub where_: SearchSpace,
 }
 
 /// Request to insert lines into a file.
@@ -325,8 +339,6 @@ pub struct InsertLinesRequest {
     pub content: String,
     /// Insert before or after the line
     pub position: InsertPosition,
-    /// Which buffer to target
-    pub where_: SearchSpace,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -342,8 +354,8 @@ pub mod prelude {
         DeleteRequest, DeleteResponse, DeleteTool, DiffTool, EditItem, EditRequest, EditResponse,
         EditTool, Error, FileChangeStatus, FileDiff, FindRequest, FindResponse, FindTool, Index,
         IndexManager, InsertLinesRequest, InsertLinesTool, InsertPosition, Match,
-        ModifiedFileSummary, PathKey, PreviewBuilder, PreviewHunk, ReadRequest, ReadResponse,
-        ReadTool, RegexEngineOpts, ReplaceLinesRequest, ReplaceLinesResponse, ReplaceLinesTool,
-        Result, SearchSpace,
+        ModifiedFileSummary, MoveFileRequest, MoveFileResponse, MoveFilesTool, PathKey,
+        PreviewBuilder, PreviewHunk, ReadRequest, ReadResponse, ReadTool, RegexEngineOpts,
+        ReplaceLinesRequest, ReplaceLinesResponse, ReplaceLinesTool, Result, SearchSpace,
     };
 }
