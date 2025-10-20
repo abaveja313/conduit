@@ -9,7 +9,7 @@ license = "Apache-2.0"
 [dependencies]
 arc-swap = "1.7.1"
 camino = "1.2.1"
-globset = "0.4.16"
+globset = "0.4.17"
 grep-regex = "0.1.13"
 grep-searcher = "0.1.14"
 im = "15.1.0"
