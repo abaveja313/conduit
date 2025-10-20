@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { createLogger } from "@conduit/shared"
 import { Input } from "@/components/ui/input"
 import { SetupModal } from "@/components/SetupModal"
+import { ModelSwitcher } from "@/components/ModelSwitcher"
 import { FileService } from "@conduit/fs"
 import { Markdown } from "@/components/ui/markdown"
 import { streamAnthropicResponse } from "@/lib/anthropic-client"
@@ -219,19 +220,30 @@ export default function Home() {
 
   useEffect(() => {
     const hasApiKey = localStorage.getItem('anthropicApiKey')
+    const savedModel = localStorage.getItem('selectedModel')
+
     logger.debug('Home page state:', {
       isSetupComplete,
       showSettings,
-      hasStoredApiKey: !!hasApiKey
+      hasStoredApiKey: !!hasApiKey,
+      savedModel
     })
 
-    // If you have an API key stored, you might have completed setup before
+    if (savedModel) {
+      setCurrentModel(savedModel)
+    }
+
     if (hasApiKey && !isSetupComplete) {
       logger.debug('Found stored API key but setup not complete - modal should be showing')
     }
   }, [isSetupComplete, showSettings])
   const [isStagingCollapsed, setIsStagingCollapsed] = useState(false)
-  const [currentModel, setCurrentModel] = useState("")
+  const [currentModel, setCurrentModel] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('selectedModel') || "claude-sonnet-4-20250514"
+    }
+    return "claude-sonnet-4-20250514"
+  })
   const [fileService, setFileService] = useState<FileService | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -347,6 +359,11 @@ export default function Home() {
     setCurrentModel(config.model)
     setFileService(config.fileService)
     loadFiles(config.fileService, 0)
+  }
+
+  const handleModelChange = (newModel: string) => {
+    setCurrentModel(newModel)
+    localStorage.setItem('selectedModel', newModel)
   }
 
   const loadFiles = async (service: FileService, page: number) => {
@@ -912,6 +929,7 @@ export default function Home() {
               handleSetupComplete(config)
               setShowSettings(false)
             }}
+            initialModel={currentModel}
           />
 
           <div
@@ -938,9 +956,11 @@ export default function Home() {
                           className="pr-24 h-12 text-base"
                         />
                         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground px-2 py-1 bg-secondary rounded">
-                            Claude
-                          </span>
+                          <ModelSwitcher
+                            currentModel={currentModel}
+                            onModelChange={handleModelChange}
+                            variant="compact"
+                          />
                           <Button
                             type="submit"
                             size="sm"
@@ -1005,9 +1025,11 @@ export default function Home() {
                         className="pr-24 h-12 text-base"
                       />
                       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground px-2 py-1 bg-secondary rounded">
-                          Claude
-                        </span>
+                        <ModelSwitcher
+                          currentModel={currentModel}
+                          onModelChange={handleModelChange}
+                          variant="compact"
+                        />
                         <Button
                           type="submit"
                           size="sm"

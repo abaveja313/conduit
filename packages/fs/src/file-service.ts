@@ -567,10 +567,16 @@ export class FileService {
 
             if (result.deleted.length > 0) {
                 for (const path of result.deleted) {
-                    try {
-                        await this.fileManager.removeFile(path);
-                    } catch (error) {
-                        logger.warn(`Failed to delete file: ${path}`, error);
+                    const metadata = this.fileManager.getMetadata(path);
+                    if (metadata?.handle) {
+                        try {
+                            await this.fileManager.removeFile(path);
+                            logger.debug(`Deleted file from disk: ${path}`);
+                        } catch (error) {
+                            logger.debug(`Failed to delete file (may have been moved): ${path}`, error);
+                        }
+                    } else {
+                        logger.debug(`Skipped deletion (never existed on disk): ${path}`);
                     }
                 }
             }

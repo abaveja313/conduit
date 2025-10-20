@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Train, Loader2, Folder, AlertCircle, ChevronRight, ChevronLeft, HardDrive, Cpu, Shield, Github, Sparkles, Zap, Brain, Crown } from "lucide-react"
+import { Train, Loader2, Folder, AlertCircle, ChevronRight, ChevronLeft, HardDrive, Cpu, Shield, Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -23,6 +23,7 @@ import {
     trackWasmInitializationFailed
 } from "@/lib/posthog"
 import { useFeatureFlagEnabled } from 'posthog-js/react'
+import { ModelGrid, MODELS } from '@/components/ModelGrid'
 
 interface SetupModalProps {
     open: boolean
@@ -34,57 +35,14 @@ interface SetupModalProps {
         mode: "read" | "readwrite"
         fileService: FileService
     }) => void
+    initialModel?: string
 }
 
 type Step = "welcome" | "directory" | "provider"
 
-const MODELS = {
-    anthropic: [
-        {
-            value: "claude-haiku-4-5-20251001",
-            label: "Claude 4.5 Haiku",
-            description: "Lightning fast responses for simple tasks",
-            icon: Zap,
-            features: ["Fastest", "Cost-effective"],
-            color: "from-blue-500/10 to-cyan-500/10",
-            borderColor: "border-blue-500/20"
-        },
-        {
-            value: "claude-sonnet-4-5-20250929",
-            label: "Claude 4.5 Sonnet",
-            description: "Best balance of speed and intelligence",
-            icon: Sparkles,
-            features: ["Balanced", "Most popular"],
-            recommended: true,
-            color: "from-purple-500/10 to-pink-500/10",
-            borderColor: "border-purple-500/20"
-        },
-        {
-            value: "claude-sonnet-4-20250514",
-            label: "Claude 4 Sonnet",
-            description: "Previous generation balanced model",
-            icon: Brain,
-            features: ["Stable", "Proven"],
-            color: "from-green-500/10 to-emerald-500/10",
-            borderColor: "border-green-500/20"
-        },
-        {
-            value: "claude-opus-4-1-20250805",
-            label: "Claude 4.1 Opus",
-            description: "Most capable model for complex reasoning",
-            icon: Crown,
-            features: ["Most powerful", "Expensive"],
-            premium: true,
-            requiresOwnKey: true,
-            color: "from-amber-500/10 to-orange-500/10",
-            borderColor: "border-amber-500/20"
-        }
-    ]
-}
-
 const logger = createLogger('web:setup-modal')
 
-export function SetupModal({ open, onComplete }: SetupModalProps) {
+export function SetupModal({ open, onComplete, initialModel }: SetupModalProps) {
     const [step, setStep] = useState<Step>("welcome")
 
     // Initialize from saved API key if available
@@ -100,20 +58,29 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             useOwnKey,
             apiKeyLength: apiKey.length
         })
-    }, [])
+    }, [hasSavedKey, useOwnKey, apiKey.length])
 
-    const [model, setModel] = useState("claude-sonnet-4-20250514")
+    const [model, setModel] = useState(() => {
+        if (initialModel) return initialModel
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('selectedModel') || "claude-sonnet-4-20250514"
+        }
+        return "claude-sonnet-4-20250514"
+    })
     const [directory, setDirectory] = useState<FileSystemDirectoryHandle | null>(null)
     const [mode, setMode] = useState<"read" | "readwrite">("readwrite")
 
     const isUsingInternalKey = useFeatureFlagEnabled('use-internal-api-key') || false
 
     const getAvailableModels = useCallback(() => {
-        const allModels = MODELS.anthropic
-        if (isUsingInternalKey && !useOwnKey) {
-            return allModels.filter(m => !m.premium)
-        }
-        return allModels
+        const models = isUsingInternalKey && !useOwnKey
+            ? MODELS.filter(m => !m.premium)
+            : MODELS
+
+        return models.map(model => ({
+            ...model,
+            disabled: model.requiresOwnKey ? !useOwnKey : (model.premium && isUsingInternalKey && !useOwnKey)
+        }))
     }, [isUsingInternalKey, useOwnKey])
 
     const [isScanning, setIsScanning] = useState(false)
@@ -228,6 +195,9 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
             setError(null)
             const handle = await window.showDirectoryPicker({ mode })
             setDirectory(handle)
+            setHasScanned(false)
+            setScanStats(null)
+            setScanProgress(null)
         } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') {
                 return
@@ -252,6 +222,9 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
     const handleBack = () => {
         if (step === "provider") {
             setStep("directory")
+            setHasScanned(false)
+            setScanStats(null)
+            setScanProgress(null)
         } else if (step === "directory") {
             setStep("welcome")
         }
@@ -318,6 +291,8 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
         }
 
         const finalApiKey = needsApiKey ? apiKey : ""
+
+        localStorage.setItem('selectedModel', model)
 
         onComplete({
             provider: "anthropic",
@@ -470,73 +445,12 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                 )}
                                 {step === "provider" && (
                                     <div className="space-y-6">
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {getAvailableModels().map((m) => {
-                                                const Icon = m.icon
-                                                const isSelected = model === m.value
-                                                const isDisabled = m.requiresOwnKey ? !useOwnKey : (m.premium && isUsingInternalKey && !useOwnKey)
-
-                                                return (
-                                                    <motion.button
-                                                        key={m.value}
-                                                        onClick={() => !isDisabled && setModel(m.value)}
-                                                        disabled={isDisabled}
-                                                        whileHover={!isDisabled ? { scale: 1.02 } : {}}
-                                                        whileTap={!isDisabled ? { scale: 0.98 } : {}}
-                                                        className={`
-                                                                relative p-4 rounded-lg border-2 transition-all text-left overflow-visible
-                                                                ${isSelected
-                                                                ? `border-primary bg-gradient-to-br ${m.color} shadow-md`
-                                                                : 'border-muted-foreground/20 hover:border-muted-foreground/40 bg-card/80'
-                                                            }
-                                                                ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                                                            `}
-                                                    >
-                                                        <div className="space-y-3">
-                                                            <div className="flex items-center gap-2">
-                                                                <Icon className={`h-5 w-5 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
-                                                                <h3 className="font-semibold text-sm">
-                                                                    {m.label}
-                                                                </h3>
-                                                            </div>
-
-                                                            <p className="text-xs text-muted-foreground line-clamp-2">
-                                                                {m.description}
-                                                            </p>
-
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {m.features.map((feature, idx) => (
-                                                                    <span
-                                                                        key={idx}
-                                                                        className={`
-                                                                                text-xs px-2 py-0.5 rounded-full border
-                                                                                ${isSelected
-                                                                                ? 'bg-primary/10 text-primary border-primary/20'
-                                                                                : 'bg-muted/50 text-muted-foreground border-muted-foreground/10'
-                                                                            }
-                                                                            `}
-                                                                    >
-                                                                        {feature}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-
-                                                        {isSelected && (
-                                                            <motion.div
-                                                                initial={{ scale: 0 }}
-                                                                animate={{ scale: 1 }}
-                                                                className="absolute top-2 right-2 h-5 w-5 rounded-full bg-primary flex items-center justify-center"
-                                                            >
-                                                                <svg className="h-3 w-3 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                                </svg>
-                                                            </motion.div>
-                                                        )}
-                                                    </motion.button>
-                                                )
-                                            })}
-                                        </div>
+                                        <ModelGrid
+                                            selectedModel={model}
+                                            onModelSelect={setModel}
+                                            availableModels={getAvailableModels()}
+                                            compact={false}
+                                        />
 
                                         {!isUsingInternalKey ? (
                                             <div className="grid gap-2">
@@ -599,7 +513,7 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                             <Button
                                                 variant="outline"
                                                 onClick={handleDirectoryPicker}
-                                                disabled={isScanning || hasScanned || !browserSupported}
+                                                disabled={isScanning || !browserSupported}
                                                 className="w-full px-6 py-4"
                                             >
                                                 <Folder className="h-4 w-4 mr-2" />
@@ -613,8 +527,13 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                                     type="radio"
                                                     name="mode"
                                                     checked={mode === "readwrite"}
-                                                    onChange={() => setMode("readwrite")}
-                                                    disabled={isScanning || hasScanned}
+                                                    onChange={() => {
+                                                        setMode("readwrite")
+                                                        setHasScanned(false)
+                                                        setScanStats(null)
+                                                        setScanProgress(null)
+                                                    }}
+                                                    disabled={isScanning}
                                                 />
                                                 <div className="flex-1">
                                                     <div className="text-sm">Read & Write</div>
@@ -626,8 +545,13 @@ export function SetupModal({ open, onComplete }: SetupModalProps) {
                                                     type="radio"
                                                     name="mode"
                                                     checked={mode === "read"}
-                                                    onChange={() => setMode("read")}
-                                                    disabled={isScanning || hasScanned}
+                                                    onChange={() => {
+                                                        setMode("read")
+                                                        setHasScanned(false)
+                                                        setScanStats(null)
+                                                        setScanProgress(null)
+                                                    }}
+                                                    disabled={isScanning}
                                                 />
                                                 <div className="flex-1">
                                                     <div className="text-sm">Read Only</div>
