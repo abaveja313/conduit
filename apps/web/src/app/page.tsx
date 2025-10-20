@@ -6,6 +6,7 @@ import { Train, RefreshCw, ChevronRight, Send, Settings, CheckCircle2, FileText,
 import { Button } from "@/components/ui/button"
 import { createLogger } from "@conduit/shared"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { SetupModal } from "@/components/SetupModal"
 import { ModelSwitcher } from "@/components/ModelSwitcher"
 import { FileService } from "@conduit/fs"
@@ -1016,15 +1017,24 @@ export default function Home() {
 
                   <form onSubmit={handleSubmit} className="p-4 border-t border-border">
                     <div className="relative">
-                      <Input
-                        type="text"
-                        placeholder="Continue the conversation..."
+                      <Textarea
+                        placeholder="Continue the conversation... (Enter to send, Shift+Enter for new line)"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            const form = e.currentTarget.closest('form')
+                            if (form) {
+                              form.requestSubmit()
+                            }
+                          }
+                        }}
                         disabled={isLoading}
-                        className="pr-24 h-12 text-base"
+                        className="pr-4 pb-12 min-h-[60px] max-h-[200px] text-base resize-none overflow-y-auto"
+                        autoResize
                       />
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                      <div className="absolute right-2 bottom-2 flex items-center gap-2">
                         <ModelSwitcher
                           currentModel={currentModel}
                           onModelChange={handleModelChange}

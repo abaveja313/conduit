@@ -6,8 +6,8 @@ interface MarkdownProps {
 }
 
 export function Markdown({ content, className = '' }: MarkdownProps) {
-    // Simple markdown parsing for code blocks
     const parseMarkdown = (text: string) => {
+        // First split by code blocks to preserve them
         const parts = text.split(/(```[\s\S]*?```)/g);
 
         return parts.map((part, index) => {
@@ -22,23 +22,69 @@ export function Markdown({ content, className = '' }: MarkdownProps) {
                 );
             }
 
-            // Handle inline code
-            const inlineParts = part.split(/(`[^`]+`)/g);
-            return (
-                <span key={index} className="whitespace-pre-wrap">
-                    {inlineParts.map((inlinePart, i) => {
-                        if (inlinePart.startsWith('`') && inlinePart.endsWith('`')) {
-                            return (
-                                <code key={i} className="bg-secondary/50 px-1 py-0.5 rounded text-sm font-mono">
-                                    {inlinePart.slice(1, -1)}
-                                </code>
-                            );
-                        }
-                        return <span key={i} className="whitespace-pre-wrap">{inlinePart}</span>;
-                    })}
-                </span>
-            );
+            // Handle inline code, bold, and italics
+            return parseInlineFormatting(part, index);
         });
+    };
+
+    const parseInlineFormatting = (text: string, keyPrefix: number) => {
+        // Pattern to match inline code, bold, and italic markers
+        // Order matters: check for triple asterisks first, then double, then single
+        const pattern = /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*|___[^_]+_____|__[^_]+__|_[^_]+_)/g;
+
+        const parts = text.split(pattern);
+
+        return (
+            <span key={keyPrefix} className="whitespace-pre-wrap">
+                {parts.map((part, i) => {
+                    if (!part) return null;
+
+                    // Inline code
+                    if (part.startsWith('`') && part.endsWith('`')) {
+                        return (
+                            <code key={`${keyPrefix}-${i}`} className="bg-secondary/50 px-1 py-0.5 rounded text-sm font-mono">
+                                {part.slice(1, -1)}
+                            </code>
+                        );
+                    }
+
+                    // Bold and italic (*** or ___)
+                    if ((part.startsWith('***') && part.endsWith('***')) ||
+                        (part.startsWith('___') && part.endsWith('___'))) {
+                        const content = part.startsWith('***') ? part.slice(3, -3) : part.slice(3, -3);
+                        return (
+                            <strong key={`${keyPrefix}-${i}`} className="font-bold italic">
+                                {content}
+                            </strong>
+                        );
+                    }
+
+                    // Bold (** or __)
+                    if ((part.startsWith('**') && part.endsWith('**')) ||
+                        (part.startsWith('__') && part.endsWith('__'))) {
+                        const content = part.startsWith('**') ? part.slice(2, -2) : part.slice(2, -2);
+                        return (
+                            <strong key={`${keyPrefix}-${i}`} className="font-bold">
+                                {content}
+                            </strong>
+                        );
+                    }
+
+                    // Italic (* or _)
+                    if ((part.startsWith('*') && part.endsWith('*') && part.length > 1) ||
+                        (part.startsWith('_') && part.endsWith('_') && part.length > 1)) {
+                        const content = part.slice(1, -1);
+                        return (
+                            <em key={`${keyPrefix}-${i}`} className="italic">
+                                {content}
+                            </em>
+                        );
+                    }
+
+                    return <span key={`${keyPrefix}-${i}`}>{part}</span>;
+                })}
+            </span>
+        );
     };
 
     return <div className={`prose prose-invert max-w-none ${className}`}>{parseMarkdown(content)}</div>;
