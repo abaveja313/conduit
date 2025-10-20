@@ -214,7 +214,7 @@ export class FileService {
         await this.ensureWasmInitialized();
 
         try {
-            wasm.delete_index_file(normalizedPath);
+            wasm.delete_file(normalizedPath);
         } catch (error) {
             throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
                 operation: 'delete_file',
@@ -243,9 +243,7 @@ export class FileService {
         await this.ensureWasmInitialized();
 
         try {
-            const stop = limit === 0 ? 0 : start + limit;
-
-            const result = wasm.list_files(start, stop, useStaged, glob);
+            const result = wasm.list_files_from_wasm(null, glob, useStaged, limit, start);
 
             const hasMore = result.end < result.total;
 
@@ -273,14 +271,16 @@ export class FileService {
         await this.ensureWasmInitialized();
 
         try {
-            const results = wasm.find_in_files(
+            const results = wasm.search_files(
                 validated.pattern,
+                null, // path_prefix
+                validated.includeGlobs?.join(',') || null, // include_pattern
+                validated.excludeGlobs?.join(',') || null, // exclude_pattern
+                !validated.caseInsensitive, // case_sensitive (inverted)
+                validated.wholeWord || false,
                 validated.useStaged,
-                validated.caseInsensitive,
-                validated.wholeWord,
-                validated.includeGlobs,
-                validated.excludeGlobs,
-                validated.contextLines
+                validated.contextLines || 2,
+                100 // limit
             );
             return { results };
         } catch (error) {

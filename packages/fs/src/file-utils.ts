@@ -1,45 +1,10 @@
 import { createLogger } from '@conduit/shared';
+import { isBinaryFile as detectBinaryFile, isBinaryFromContent } from './binary-detector.js';
 
 const logger = createLogger('file-utils');
 
-const TEXT_EXTENSIONS = new Set([
-    'txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts', 'jsx', 'tsx',
-    'py', 'java', 'c', 'cpp', 'h', 'cs', 'php', 'rb', 'go', 'rs',
-    'yml', 'yaml', 'toml', 'ini', 'sh', 'sql', 'csv', 'log', 'env',
-]);
-
-const BINARY_EXTENSIONS = new Set([
-    'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'svg',
-    'pdf', 'zip', 'tar', 'gz', 'rar', '7z',
-    'exe', 'dll', 'so',
-    'mp3', 'mp4', 'avi', 'mov', 'wav', 'flac', 'ogg', 'webm',
-    'ttf', 'otf', 'woff', 'woff2', 'eot',
-    'db', 'sqlite',
-]);
-
-/**
- * Detect if a file is binary based on extension and content sampling
- */
-export async function isBinaryFile(file: File): Promise<boolean> {
-    const ext = file.name.toLowerCase().split('.').pop() || '';
-
-    if (TEXT_EXTENSIONS.has(ext)) return false;
-    if (BINARY_EXTENSIONS.has(ext)) return true;
-
-    // Unknown extension - check content
-    const sample = new Uint8Array(await file.slice(0, 8192).arrayBuffer());
-
-    // Quick NUL byte check
-    if (sample.indexOf(0x00) !== -1) return true;
-
-    // UTF-8 validity check
-    try {
-        new TextDecoder('utf-8', { fatal: true }).decode(sample);
-        return false;
-    } catch {
-        return true;
-    }
-}
+export const isBinaryFile = detectBinaryFile;
+export { isBinaryFromContent };
 
 /**
  * Normalize file paths for consistent handling

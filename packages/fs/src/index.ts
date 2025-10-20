@@ -51,6 +51,7 @@ export type {
 export { isFileHandle, isDirectoryHandle, isFileSystemAccessSupported } from './types.js';
 export {
   isBinaryFile,
+  isBinaryFromContent,
   normalizePath,
   encodeText,
   decodeText,

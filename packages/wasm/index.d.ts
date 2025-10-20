@@ -211,7 +211,7 @@ export function create_index_file(
  * @returns Object with path and existed flag
  * @throws {Error} If staging is not active
  */
-export function delete_index_file(path: string): {
+export function delete_file(path: string): {
   path: string;
   existed: boolean;
 };
@@ -332,7 +332,7 @@ export function insert_lines(
  * @returns Object containing files array, total count, and actual pagination bounds
  * @throws {Error} If use_staged is true but no staging session is active
  */
-export function list_files(start: number, stop: number, use_staged: boolean, glob_pattern?: string | null): {
+export function list_files_from_wasm(path_prefix?: string | null, glob_pattern?: string | null, use_staged?: boolean | null, limit?: number | null, offset?: number | null): {
   files: Array<{
     path: string;
     size: number;
@@ -349,14 +349,16 @@ export function list_files(start: number, stop: number, use_staged: boolean, glo
  * Search for matches in files using regex patterns.
  * Returns an array of preview hunks showing matches with surrounding context.
  */
-export function find_in_files(
-  pattern: string,
-  use_staged: boolean,
-  case_insensitive?: boolean | null,
+export function search_files(
+  search_term: string,
+  path_prefix?: string | null,
+  include_pattern?: string | null,
+  exclude_pattern?: string | null,
+  case_sensitive?: boolean | null,
   whole_word?: boolean | null,
-  include_globs?: string[] | null,
-  exclude_globs?: string[] | null,
-  context_lines?: number | null
+  use_staged?: boolean | null,
+  context_lines?: number | null,
+  limit?: number | null
 ): Array<{
   path: string;
   previewStartLine: number;

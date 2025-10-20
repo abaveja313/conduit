@@ -3,11 +3,11 @@ import type { FileMetadata } from './types.js';
 import { FileScanner } from './scanner.js';
 import { createLogger, ErrorCodes, wrapError, getErrorMessage } from '@conduit/shared';
 import pLimit from 'p-limit';
-import { isBinaryFile, normalizePath, logFileOperation } from './file-utils.js';
+import { isBinaryFromContent, normalizePath, logFileOperation } from './file-utils.js';
 import { DocumentExtractor } from './document-extractor.js';
+import { getOptimalConcurrency } from './concurrency-utils.js';
 
 const logger = createLogger('file-manager');
-
 
 export interface FileManagerConfig {
   /** Parallel file operations limit (default: 10) */
@@ -46,7 +46,7 @@ export class FileManager {
   private readonly defaultConfig: Required<
     Omit<FileManagerConfig, 'onProgress' | 'onScanProgress' | 'onDocumentExtractionProgress'>
   > = {
-      concurrency: 10,
+      concurrency: getOptimalConcurrency(),
       batchSize: 1000,
     };
 
@@ -237,11 +237,10 @@ export class FileManager {
 
     logger.info(`Found ${documentPaths.length} documents to extract`);
     let extractedCount = 0;
+    const extractionStartTime = performance.now();
 
-    const batchSize = Math.min(this.config.batchSize!, 10); // Smaller batches for documents
-
-    for (let i = 0; i < documentPaths.length; i += batchSize) {
-      const batch = documentPaths.slice(i, i + batchSize);
+    for (let i = 0; i < documentPaths.length; i += 10) {
+      const batch = documentPaths.slice(i, i + 10);
 
       await Promise.all(
         batch.map((path) =>
@@ -303,7 +302,13 @@ export class FileManager {
           })
         )
       );
+
+      // Yield to UI thread
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
+
+    const extractionDuration = performance.now() - extractionStartTime;
+    logger.info(`Document extraction completed in ${extractionDuration.toFixed(0)}ms`);
 
     return extractedCount;
   }
@@ -314,7 +319,7 @@ export class FileManager {
   private async loadToWasm(): Promise<number> {
     const paths = Array.from(this.handles.keys());
     const batchSize = this.config.batchSize!;
-    let binaryFilesSkipped = 0;
+    const binaryFilesSkippedLock = { count: 0 };
 
     try {
       wasm.ping();
@@ -327,151 +332,177 @@ export class FileManager {
     wasm.begin_file_load();
 
     try {
+      const batchPromises = new Set<Promise<void>>();
+      const concurrency = this.config.concurrency!;
+      const batchConcurrency = Math.max(1, Math.floor(concurrency / 2));
+
       for (let i = 0; i < paths.length; i += batchSize) {
         const batch = paths.slice(i, i + batchSize);
 
-        const results = await Promise.all(
-          batch.map((path) =>
-            this.limit(async () => {
-              try {
-                const handle = this.handles.get(path)!;
-                const metadata = this.metadata.get(path);
-
-                if (metadata?.extracted) {
-                  const originalContent = this.originalDocumentContent.get(path);
-                  const extractedContent = this.extractedContent.get(path);
-                  if (originalContent && extractedContent) {
-                    return {
-                      path,
-                      content: originalContent,
-                      textContent: extractedContent,
-                    };
-                  }
-
-                  logger.warn(`Missing content for extracted document ${path}, skipping`);
-                  return null;
-                }
-
-                const file = await handle.getFile();
-
-                const isBinary = await isBinaryFile(file);
-                if (isBinary) {
-                  logFileOperation('Skipping binary file', path);
-                  return null;
-                }
-
-                const buffer = await file.arrayBuffer();
-
-                return {
-                  path,
-                  content: new Uint8Array(buffer),
-                };
-              } catch (error) {
-                logger.warn(`Failed to load ${path}:`, error);
-                return null;
-              }
-            }),
-          ),
-        );
-
-        const validResults = results.filter((r): r is NonNullable<typeof r> => r !== null);
-        binaryFilesSkipped += results.length - validResults.length;
-
-        if (validResults.length > 0) {
-          const validPaths = validResults.map((r) => r.path);
-          const contents = validResults.map((r) => r.content);
-          const textContents = validResults.map((r) => {
-            const result = r as { path: string; content: Uint8Array; textContent?: Uint8Array };
-            return result.textContent || null;
-          });
-
-          const normalizedPaths = validPaths.map((p) => normalizePath(p));
-          const timestamps = validPaths.map(
-            (p) => this.metadata.get(p)?.lastModified ?? Date.now(),
-          );
-          const permissions = validPaths.map(
-            (p) => this.metadata.get(p)?.editable !== false
-          );
-
-
-          if (!Array.isArray(normalizedPaths) || !Array.isArray(contents) || !Array.isArray(timestamps) || !Array.isArray(permissions)) {
-            logger.error('Invalid batch data - not arrays:', {
-              normalizedPaths: normalizedPaths,
-              contents: contents,
-              timestamps: timestamps,
-              permissions: permissions
-            });
-            throw new Error('Invalid batch data: parameters must be arrays');
-          }
-
-          const hasTextContent = textContents.some(tc => tc !== null);
-
-          const undefinedContentIndex = contents.findIndex(c => c === undefined || c === null);
-          if (undefinedContentIndex !== -1) {
-            logger.error('Found undefined content at index:', undefinedContentIndex, 'for path:', normalizedPaths[undefinedContentIndex]);
-            const validIndices = contents
-              .map((c, i) => c !== undefined && c !== null ? i : -1)
-              .filter(i => i !== -1);
-
-            const filteredPaths = validIndices.map(i => normalizedPaths[i]);
-            const filteredContents = validIndices.map(i => contents[i]) as Uint8Array[];
-            const filteredTextContents = validIndices.map(i => textContents[i]);
-            const filteredTimestamps = validIndices.map(i => timestamps[i]);
-            const filteredPermissions = validIndices.map(i => permissions[i]);
-
-            if (filteredContents.length === 0) {
-              logger.warn('No valid content in batch, skipping');
-              continue;
-            }
-
-            try {
-              if (filteredTextContents.some(tc => tc !== null)) {
-                wasm.load_file_batch_with_text(filteredPaths, filteredContents, filteredTextContents, filteredTimestamps, filteredPermissions);
-              } else {
-                wasm.load_file_batch(filteredPaths, filteredContents, filteredTimestamps, filteredPermissions);
-              }
-            } catch (filteredError) {
-              logger.error('Error loading filtered batch:', filteredError);
-              logger.debug('Filtered batch details:', {
-                pathsCount: filteredPaths.length,
-                contentsCount: filteredContents.length,
-                timestampsCount: filteredTimestamps.length,
-                permissionsCount: filteredPermissions.length
-              });
-              throw filteredError;
-            }
-          } else {
-            try {
-              if (hasTextContent) {
-                wasm.load_file_batch_with_text(normalizedPaths, contents, textContents, timestamps, permissions);
-              } else {
-                wasm.load_file_batch(normalizedPaths, contents, timestamps, permissions);
-              }
-            } catch (batchError) {
-              logger.error('Error loading file batch:', batchError);
-              logger.debug('Batch details:', {
-                pathsCount: normalizedPaths.length,
-                contentsCount: contents.length,
-                timestampsCount: timestamps.length,
-                permissionsCount: permissions.length,
-                firstPath: normalizedPaths[0],
-                firstContentLength: contents[0]?.length,
-                pathsType: Array.isArray(normalizedPaths) ? 'array' : typeof normalizedPaths,
-                contentsType: Array.isArray(contents) ? 'array' : typeof contents,
-                timestampsType: Array.isArray(timestamps) ? 'array' : typeof timestamps,
-                permissionsType: Array.isArray(permissions) ? 'array' : typeof permissions,
-                contentTypes: contents.map(c => c ? c.constructor.name : 'null/undefined')
-              });
-              throw batchError;
-            }
-          }
+        if (batchPromises.size >= batchConcurrency) {
+          await Promise.race(batchPromises);
         }
 
-        this.config.onProgress?.(Math.min(i + batchSize, paths.length), paths.length);
+        const batchPromise = (async () => {
+          const results = await Promise.all(
+            batch.map((path) =>
+              this.limit(async () => {
+                try {
+                  const handle = this.handles.get(path)!;
+                  const metadata = this.metadata.get(path);
+
+                  if (metadata?.extracted) {
+                    const originalContent = this.originalDocumentContent.get(path);
+                    const extractedContent = this.extractedContent.get(path);
+                    if (originalContent && extractedContent) {
+                      return {
+                        path,
+                        content: originalContent,
+                        textContent: extractedContent,
+                      };
+                    }
+
+                    logger.warn(`Missing content for extracted document ${path}, skipping`);
+                    return null;
+                  }
+
+                  const file = await handle.getFile();
+                  const buffer = await file.arrayBuffer();
+                  const content = new Uint8Array(buffer);
+
+                  const isBinary = isBinaryFromContent(content, file.name);
+                  if (isBinary) {
+                    logFileOperation('Skipping binary file', path);
+                    return null;
+                  }
+
+                  return {
+                    path,
+                    content,
+                  };
+                } catch (error) {
+                  logger.warn(`Failed to load ${path}:`, error);
+                  return null;
+                }
+              }),
+            ),
+          );
+
+          const validResults = results.filter((r): r is NonNullable<typeof r> => r !== null);
+          binaryFilesSkippedLock.count += results.length - validResults.length;
+
+          if (validResults.length > 0) {
+            const validPaths = validResults.map((r) => r.path);
+            const contents = validResults.map((r) => r.content);
+            const textContents = validResults.map((r) => {
+              const result = r as { path: string; content: Uint8Array; textContent?: Uint8Array };
+              return result.textContent || null;
+            });
+
+            const normalizedPaths = validPaths.map((p) => normalizePath(p));
+            const timestamps = validPaths.map(
+              (p) => this.metadata.get(p)?.lastModified ?? Date.now(),
+            );
+            const permissions = validPaths.map(
+              (p) => this.metadata.get(p)?.editable !== false
+            );
+
+
+            if (!Array.isArray(normalizedPaths) || !Array.isArray(contents) || !Array.isArray(timestamps) || !Array.isArray(permissions)) {
+              logger.error('Invalid batch data - not arrays:', {
+                normalizedPaths: normalizedPaths,
+                contents: contents,
+                timestamps: timestamps,
+                permissions: permissions
+              });
+              throw new Error('Invalid batch data: parameters must be arrays');
+            }
+
+            const hasTextContent = textContents.some(tc => tc !== null);
+
+            const undefinedContentIndex = contents.findIndex(c => c === undefined || c === null);
+            if (undefinedContentIndex !== -1) {
+              logger.error('Found undefined content at index:', undefinedContentIndex, 'for path:', normalizedPaths[undefinedContentIndex]);
+              const validIndices = contents
+                .map((c, i) => c !== undefined && c !== null ? i : -1)
+                .filter(i => i !== -1);
+
+              const filteredPaths = validIndices.map(i => normalizedPaths[i]);
+              const filteredContents = validIndices.map(i => contents[i]) as Uint8Array[];
+              const filteredTextContents = validIndices.map(i => textContents[i]);
+              const filteredTimestamps = validIndices.map(i => timestamps[i]);
+              const filteredPermissions = validIndices.map(i => permissions[i]);
+
+              if (filteredContents.length === 0) {
+                logger.warn('No valid content in batch, skipping');
+                return;
+              }
+
+              try {
+                if (filteredTextContents.some(tc => tc !== null)) {
+                  wasm.load_file_batch_with_text(filteredPaths, filteredContents, filteredTextContents, filteredTimestamps, filteredPermissions);
+                } else {
+                  wasm.load_file_batch(filteredPaths, filteredContents, filteredTimestamps, filteredPermissions);
+                }
+              } catch (filteredError) {
+                logger.error('Error loading filtered batch:', filteredError);
+                logger.debug('Filtered batch details:', {
+                  pathsCount: filteredPaths.length,
+                  contentsCount: filteredContents.length,
+                  timestampsCount: filteredTimestamps.length,
+                  permissionsCount: filteredPermissions.length
+                });
+                throw filteredError;
+              }
+            } else {
+              try {
+                if (hasTextContent) {
+                  wasm.load_file_batch_with_text(normalizedPaths, contents, textContents, timestamps, permissions);
+                } else {
+                  wasm.load_file_batch(normalizedPaths, contents, timestamps, permissions);
+                }
+              } catch (batchError) {
+                logger.error('Error loading file batch:', batchError);
+                logger.debug('Batch details:', {
+                  pathsCount: normalizedPaths.length,
+                  contentsCount: contents.length,
+                  timestampsCount: timestamps.length,
+                  permissionsCount: permissions.length,
+                  firstPath: normalizedPaths[0],
+                  firstContentLength: contents[0]?.length,
+                  pathsType: Array.isArray(normalizedPaths) ? 'array' : typeof normalizedPaths,
+                  contentsType: Array.isArray(contents) ? 'array' : typeof contents,
+                  timestampsType: Array.isArray(timestamps) ? 'array' : typeof timestamps,
+                  permissionsType: Array.isArray(permissions) ? 'array' : typeof permissions,
+                  contentTypes: contents.map(c => c ? c.constructor.name : 'null/undefined')
+                });
+                throw batchError;
+              }
+            }
+          }
+
+          this.config.onProgress?.(Math.min(i + batchSize, paths.length), paths.length);
+        })();
+
+        batchPromise
+          .finally(() => {
+            batchPromises.delete(batchPromise);
+          });
+
+        batchPromises.add(batchPromise);
+      }
+
+      const results = await Promise.allSettled(batchPromises);
+
+      // Check for any failed batches
+      const failures = results.filter(r => r.status === 'rejected');
+      if (failures.length > 0) {
+        logger.error(`${failures.length} batch(es) failed during loading`);
+        throw new Error(`Failed to load ${failures.length} batch(es)`);
       }
 
       wasm.commit_file_load();
-      return binaryFilesSkipped;
+      return binaryFilesSkippedLock.count;
     } catch (error) {
       wasm.abort_file_load();
       throw wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, { operation: 'load_to_wasm' });

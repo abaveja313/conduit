@@ -1,9 +1,10 @@
 import mitt, { Emitter } from 'mitt';
 import picomatch from 'picomatch';
 import { join } from 'pathe';
-import { createLogger, ErrorCodes, wrapError, isAbortError } from '@conduit/shared';
+import { createLogger, ErrorCodes, wrapError } from '@conduit/shared';
 import type { FileMetadata, ScanOptions, ScannerEvents } from './types.js';
 import { isFileHandle, isDirectoryHandle, isFileSystemAccessSupported } from './types.js';
+import { getOptimalConcurrency } from './concurrency-utils.js';
 
 const logger = createLogger('file-scanner');
 
@@ -19,7 +20,7 @@ export class FileScanner {
       maxDepth: Infinity,
       includeHidden: false,
       maxFileSize: Infinity,
-      concurrency: 3,
+      concurrency: getOptimalConcurrency(),
       signal: new AbortController().signal,
       fileFilter: undefined,
     };
@@ -65,23 +66,18 @@ export class FileScanner {
 
     try {
       if (opts.concurrency > 1) {
-        logger.info('Using concurrent scanning', { concurrency: opts.concurrency });
+        logger.info('Using optimized concurrent scanning ', { concurrency: opts.concurrency });
         yield* this.scanConcurrent(rootHandle, opts, shouldExclude, startTime);
       } else {
         yield* this.scanSequential(rootHandle, '', 0, opts, shouldExclude, state, startTime);
       }
     } catch (error) {
-      if (isAbortError(error)) {
-        logger.info('Scan aborted');
-        throw error; // Let DOMException propagate
-      } else {
-        const wrappedError = wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
-          rootHandle: rootHandle.name,
-          operation: 'scan',
-        });
-        logger.error('Scan failed', wrappedError.toJSON());
-        throw wrappedError;
-      }
+      const wrappedError = wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
+        rootHandle: rootHandle.name,
+        operation: 'scan',
+      });
+      logger.error('Scan failed', wrappedError.toJSON());
+      throw wrappedError;
     }
   }
 
@@ -97,10 +93,6 @@ export class FileScanner {
     state: { processedCount: number },
     startTime: number,
   ): AsyncGenerator<FileMetadata> {
-    if (opts.signal?.aborted) {
-      throw new DOMException('Scan aborted', 'AbortError');
-    }
-
     if (depth > opts.maxDepth) {
       return;
     }
@@ -108,10 +100,6 @@ export class FileScanner {
     const dirPath = parentPath;
 
     for await (const [name, handle] of dirHandle.entries()) {
-      if (opts.signal?.aborted) {
-        throw new DOMException('Scan aborted', 'AbortError');
-      }
-
       if (!opts.includeHidden && name.startsWith('.')) {
         continue;
       }
@@ -211,7 +199,7 @@ export class FileScanner {
   }
 
   /**
-   * Concurrent scanning (experimental)
+   * Concurrent scanning with improved parallelism
    */
   private async *scanConcurrent(
     rootHandle: FileSystemDirectoryHandle,
@@ -219,118 +207,140 @@ export class FileScanner {
     shouldExclude: (path: string) => boolean,
     startTime: number,
   ): AsyncGenerator<FileMetadata> {
-    const queue: Array<{ handle: FileSystemDirectoryHandle; path: string; depth: number }> = [
-      { handle: rootHandle, path: '', depth: 0 },
+    // Single work queue for all entries (files and directories)
+    interface WorkItem {
+      type: 'directory' | 'file';
+      handle: FileSystemHandle;
+      path: string;
+      name: string;
+      depth: number;
+    }
+
+    const workQueue: WorkItem[] = [
+      { type: 'directory', handle: rootHandle, path: '', name: '', depth: 0 },
     ];
 
     const results: FileMetadata[] = [];
     let processedCount = 0;
     const processing = new Set<Promise<void>>();
 
-    const processDirectory = async (dir: (typeof queue)[0]) => {
-      if (dir.depth > opts.maxDepth) return;
+    const processWorkItem = async (item: WorkItem): Promise<void> => {
+      const { type, handle, path, name, depth } = item;
 
-      for await (const [name, handle] of dir.handle.entries()) {
-        if (opts.signal?.aborted) break;
+      if (type === 'directory') {
+        if (depth > opts.maxDepth) return;
 
-        if (!opts.includeHidden && name.startsWith('.')) {
-          continue;
+        const dirHandle = handle as FileSystemDirectoryHandle;
+
+        // Emit directory metadata
+        const metadata: FileMetadata = {
+          path,
+          name,
+          size: 0,
+          type: 'directory',
+          lastModified: Date.now(),
+          handle: dirHandle,
+        };
+
+        if (path !== '') { // Don't emit root directory
+          results.push(metadata);
+          processedCount++;
+          this.emitter.emit('file', metadata);
         }
 
-        const entryPath = dir.path ? join(dir.path, name) : name;
-        if (shouldExclude(entryPath)) continue;
-
+        // Queue all entries from this directory
         try {
-          if (isFileHandle(handle)) {
-            const file = await handle.getFile();
-            if (opts.maxFileSize !== Infinity && file.size > opts.maxFileSize) {
+          for await (const [entryName, entryHandle] of dirHandle.entries()) {
+            // Early filtering
+            if (!opts.includeHidden && entryName.startsWith('.')) {
               continue;
             }
 
-            if (opts.fileFilter && !opts.fileFilter(file, entryPath)) {
-              continue;
-            }
+            const entryPath = path ? join(path, entryName) : entryName;
+            if (shouldExclude(entryPath)) continue;
 
-            const metadata: FileMetadata = {
+            // Add to work queue for parallel processing
+            workQueue.push({
+              type: isFileHandle(entryHandle) ? 'file' : 'directory',
+              handle: entryHandle,
               path: entryPath,
-              name,
-              size: file.size,
-              type: 'file',
-              lastModified: file.lastModified,
-              handle,
-            };
-
-            results.push(metadata);
-            processedCount++;
-            this.emitter.emit('file', metadata);
-          } else if (isDirectoryHandle(handle)) {
-            if (dir.depth < opts.maxDepth) {
-              const metadata: FileMetadata = {
-                path: entryPath,
-                name,
-                size: 0,
-                type: 'directory',
-                lastModified: Date.now(),
-                handle,
-              };
-              results.push(metadata);
-              processedCount++;
-              try {
-                this.emitter.emit('file', metadata);
-              } catch (eventError) {
-                logger.error('Error in event listener', eventError);
-              }
-              queue.push({ handle, path: entryPath, depth: dir.depth + 1 });
-            }
+              name: entryName,
+              depth: depth + 1,
+            });
           }
         } catch (error) {
           const wrappedError = wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
-            path: entryPath,
-            operation: 'process_concurrent',
+            path,
+            operation: 'read_directory',
           });
-          this.emitter.emit('error', {
-            path: entryPath,
-            error: wrappedError,
+          this.emitter.emit('error', { path, error: wrappedError });
+        }
+      } else {
+        // Process file
+        try {
+          const fileHandle = handle as FileSystemFileHandle;
+          const file = await fileHandle.getFile();
+
+          // Apply filters
+          if (opts.maxFileSize !== Infinity && file.size > opts.maxFileSize) {
+            return;
+          }
+
+          if (opts.fileFilter && !opts.fileFilter(file, path)) {
+            return;
+          }
+
+          const metadata: FileMetadata = {
+            path,
+            name,
+            size: file.size,
+            type: 'file',
+            lastModified: file.lastModified,
+            handle: fileHandle,
+          };
+
+          results.push(metadata);
+          processedCount++;
+          this.emitter.emit('file', metadata);
+        } catch (error) {
+          const wrappedError = wrapError(error, ErrorCodes.FILE_ACCESS_ERROR, {
+            path,
+            operation: 'read_file',
           });
+          this.emitter.emit('error', { path, error: wrappedError });
         }
       }
     };
 
-    while (queue.length > 0 || processing.size > 0) {
-      if (opts.signal?.aborted) {
-        throw new DOMException('Scan aborted', 'AbortError');
-      }
+    // Process work queue with improved parallelism
+    while (workQueue.length > 0 || processing.size > 0) {
 
-      while (queue.length > 0 && processing.size < opts.concurrency) {
-        const dir = queue.shift()!;
-        const promise = processDirectory(dir)
+      // Start processing up to concurrency limit
+      while (workQueue.length > 0 && processing.size < opts.concurrency) {
+        const workItem = workQueue.shift()!;
+
+        const promise = processWorkItem(workItem)
           .then(() => {
             processing.delete(promise);
             this.emitter.emit('progress', {
               processed: processedCount,
-              currentPath: dir.path,
+              currentPath: workItem.path,
             });
           })
           .catch((error) => {
             processing.delete(promise);
-            // Re-throw abort errors
-            if (error.name === 'AbortError') {
-              throw error;
-            }
-            // Log other errors but continue
-            logger.error('Error processing directory', error);
+            logger.error(`Error processing ${workItem.type}: ${workItem.path}`, error);
           });
+
         processing.add(promise);
       }
 
+      // Wait for at least one task to complete
       if (processing.size > 0) {
         await Promise.race(processing);
       }
 
-      if (opts.signal?.aborted) {
-        throw new DOMException('Scan aborted', 'AbortError');
-      }
-
+      // Yield accumulated results
       while (results.length > 0) {
         yield results.shift()!;
       }

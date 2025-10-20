@@ -10,7 +10,10 @@ vi.mock('@conduit/wasm', () => ({
     is_initialized: vi.fn(),
     begin_index_staging: vi.fn(),
     commit_index_staging: vi.fn(),
-    move_file: vi.fn(),
+    move_files: vi.fn(),
+    list_files_from_wasm: vi.fn(),
+    search_files: vi.fn(),
+    delete_file: vi.fn(),
     create_file: vi.fn(),
 }));
 
@@ -179,27 +182,31 @@ describe('FileService - Move File Handling', () => {
         });
     });
 
-    describe('moveFile', () => {
-        it('should successfully move a file', async () => {
-            vi.mocked(wasm.move_file).mockReturnValue({ dst: 'new-path.txt' });
+    describe('moveFiles', () => {
+        it('should successfully move files', async () => {
+            vi.mocked(wasm.move_files).mockReturnValue({ count: 1 });
 
-            const result = await fileService.moveFile({
-                src: 'old-path.txt',
-                dst: 'new-path.txt',
+            const result = await fileService.moveFiles({
+                operations: [
+                    { src: 'old-path.txt', dst: 'new-path.txt' }
+                ]
             });
 
-            expect(wasm.move_file).toHaveBeenCalledWith('old-path.txt', 'new-path.txt');
-            expect(result.dst).toBe('new-path.txt');
+            expect(wasm.move_files).toHaveBeenCalledWith([
+                { src: 'old-path.txt', dst: 'new-path.txt' }
+            ]);
+            expect(result.count).toBe(1);
         });
 
         it('should handle move errors', async () => {
-            vi.mocked(wasm.move_file).mockImplementation(() => {
+            vi.mocked(wasm.move_files).mockImplementation(() => {
                 throw new Error('File not found');
             });
 
-            await expect(fileService.moveFile({
-                src: 'non-existent.txt',
-                dst: 'new.txt',
+            await expect(fileService.moveFiles({
+                operations: [
+                    { src: 'non-existent.txt', dst: 'new.txt' }
+                ]
             })).rejects.toThrow();
         });
     });
