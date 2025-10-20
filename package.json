@@ -16,8 +16,7 @@
       "jsondiffpatch": ">=0.7.2",
       "undici": "^6.21.0",
       "esbuild": "^0.25.0",
-      "playwright": ">=1.55.1",
-      "vite": "^7.1.11"
+      "playwright": ">=1.55.1"
     }
   },
   "devDependencies": {
