@@ -246,10 +246,18 @@ impl Orchestrator {
     }
 
     fn stage_file_with_content(&self, path: &PathKey, content: String) -> Result<()> {
+        // Get the existing file's editable status from staged index
+        let editable = self
+            .index_manager
+            .staged_index()?
+            .get_file(path)
+            .map(|entry| entry.is_editable())
+            .unwrap_or(true); // Default to editable if file doesn't exist yet
+
         let current_time = current_unix_timestamp();
         let modified_bytes = content.into_bytes();
         let modified_entry =
-            FileEntry::from_bytes_and_path(path, current_time, modified_bytes.into(), true);
+            FileEntry::from_bytes_and_path(path, current_time, modified_bytes.into(), editable);
         self.index_manager.stage_file(path.clone(), modified_entry)
     }
 

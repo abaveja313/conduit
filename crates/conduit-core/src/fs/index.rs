@@ -212,8 +212,11 @@ impl Index {
 
     /// Insert or update file.
     pub fn upsert_file(&mut self, key: PathKey, entry: FileEntry) -> Result<()> {
-        if self.files.contains_key(&key) && !entry.is_editable() {
-            return Err(Error::ReadOnlyFile(key.into()));
+        // Check if we're trying to modify a read-only file
+        if let Some(existing) = self.files.get(&key) {
+            if !existing.is_editable() {
+                return Err(Error::ReadOnlyFile(key.into()));
+            }
         }
         let _old = self.files.insert(key.clone(), entry);
         let _ = self.prefixes.insert(key);
