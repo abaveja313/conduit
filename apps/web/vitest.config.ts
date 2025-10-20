@@ -4,19 +4,18 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [
-    react({
-      babel: {
-        plugins: [
-          ['@babel/plugin-transform-react-jsx', { runtime: 'automatic' }],
-        ],
-      },
-    }),
+    react(),
     {
       name: 'remove-use-client',
+      enforce: 'pre',
       transform(code, id) {
         if (id.includes('node_modules')) return;
-        if (id.endsWith('.tsx') || id.endsWith('.ts')) {
-          return code.replace(/^['"]use client['"][\s;]*/m, '');
+        if ((id.endsWith('.tsx') || id.endsWith('.ts')) && code.includes('use client')) {
+          const newCode = code.replace(/^['"]use client['"];?\s*/m, '');
+          return {
+            code: newCode,
+            map: null,
+          };
         }
       },
     },
@@ -33,5 +32,8 @@ export default defineConfig({
       '@conduit/shared': path.resolve(__dirname, '../../packages/shared/src'),
       '@conduit/wasm': path.resolve(__dirname, '../../packages/wasm'),
     },
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom'],
   },
 });

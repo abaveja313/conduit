@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion"
 import { Zap, Sparkles, Brain, Crown } from "lucide-react"
+import { MODELS as BASE_MODELS } from "./model-utils"
 
 export interface ModelOption {
     value: string
@@ -17,51 +18,14 @@ export interface ModelOption {
     borderColor: string
 }
 
-export const MODELS: ModelOption[] = [
-    {
-        value: "claude-haiku-4-5-20251001",
-        label: "Claude 4.5 Haiku",
-        shortLabel: "Haiku",
-        description: "Lightning fast responses for simple tasks",
-        icon: Zap,
-        features: ["Fastest", "Cost-effective"],
-        color: "from-blue-500/10 to-cyan-500/10",
-        borderColor: "border-blue-500/20"
-    },
-    {
-        value: "claude-sonnet-4-5-20250929",
-        label: "Claude 4.5 Sonnet",
-        shortLabel: "Sonnet 4.5",
-        description: "Best balance of speed and intelligence",
-        icon: Sparkles,
-        features: ["Balanced", "Most popular"],
-        recommended: true,
-        color: "from-purple-500/10 to-pink-500/10",
-        borderColor: "border-purple-500/20"
-    },
-    {
-        value: "claude-sonnet-4-20250514",
-        label: "Claude 4 Sonnet",
-        shortLabel: "Sonnet 4",
-        description: "Previous generation balanced model",
-        icon: Brain,
-        features: ["Stable", "Proven"],
-        color: "from-green-500/10 to-emerald-500/10",
-        borderColor: "border-green-500/20"
-    },
-    {
-        value: "claude-opus-4-1-20250805",
-        label: "Claude 4.1 Opus",
-        shortLabel: "Opus",
-        description: "Most capable model for complex reasoning",
-        icon: Crown,
-        features: ["Most powerful", "Expensive"],
-        premium: true,
-        requiresOwnKey: true,
-        color: "from-amber-500/10 to-orange-500/10",
-        borderColor: "border-amber-500/20"
-    }
-]
+// Add icons to the models
+export const MODELS: ModelOption[] = BASE_MODELS.map(model => ({
+    ...model,
+    icon: model.value.includes('haiku') ? Zap :
+          model.value.includes('opus') ? Crown :
+          model.value === 'claude-sonnet-4-5-20250929' ? Brain :
+          Sparkles
+}))
 
 interface ModelWithDisabled extends ModelOption {
     disabled?: boolean
