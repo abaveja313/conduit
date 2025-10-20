@@ -263,7 +263,6 @@ export default function Home() {
     currentFile?: string
     phase: 'preparing' | 'persisting' | 'finalizing' | 'complete'
     duration?: number
-    avgLatency?: number
   }>({ current: 0, total: 0, phase: 'preparing' })
   const [activeTab, setActiveTab] = useState("files")
   const [files, setFiles] = useState<Array<{
@@ -830,8 +829,7 @@ export default function Home() {
         current: totalFiles,
         total: totalFiles,
         phase: 'complete',
-        duration,
-        avgLatency: systemStats.avgLatency
+        duration
       })
       setFileChanges([])
 
@@ -845,7 +843,7 @@ export default function Home() {
       await loadFiles(fileService, 0)
     } catch (error) {
       setIsPersisting(false)
-      setPersistProgress({ current: 0, total: 0, phase: 'preparing', avgLatency: undefined })
+      setPersistProgress({ current: 0, total: 0, phase: 'preparing' })
       logger.error('Failed to commit changes:', error)
       alert('Failed to sync changes. Check console for details.')
     }
@@ -964,7 +962,7 @@ export default function Home() {
         progress={persistProgress}
         onClose={() => {
           setIsPersisting(false)
-          setPersistProgress({ current: 0, total: 0, phase: 'preparing', avgLatency: undefined })
+          setPersistProgress({ current: 0, total: 0, phase: 'preparing' })
         }}
       />
 

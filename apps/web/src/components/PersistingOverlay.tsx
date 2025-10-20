@@ -10,7 +10,6 @@ interface PersistingOverlayProps {
         total: number
         phase: 'preparing' | 'persisting' | 'finalizing' | 'complete'
         duration?: number
-        avgLatency?: number
     }
     onClose?: () => void
 }
