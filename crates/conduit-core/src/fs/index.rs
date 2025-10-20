@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::fs::PathKey;
 
 /// File metadata with optional content.
@@ -212,6 +212,11 @@ impl Index {
 
     /// Insert or update file.
     pub fn upsert_file(&mut self, key: PathKey, entry: FileEntry) -> Result<()> {
+        if let Some(existing) = self.files.get(&key) {
+            if !existing.is_editable() {
+                return Err(Error::ReadOnlyFile(key.into()));
+            }
+        }
         let _old = self.files.insert(key.clone(), entry);
         let _ = self.prefixes.insert(key);
         Ok(())

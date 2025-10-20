@@ -8,6 +8,7 @@ overrides:
   jsondiffpatch: '>=0.7.2'
   undici: ^6.21.0
   esbuild: ^0.25.0
+  playwright: '>=1.55.1'
 
 importers:
   .:
@@ -34,9 +35,6 @@ importers:
       '@eslint/js':
         specifier: ^9.35.0
         version: 9.35.0
-      '@playwright/test':
-        specifier: ^1.47.2
-        version: 1.55.0
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.8.0
         version: 8.43.0(@typescript-eslint/parser@8.43.0(eslint@9.35.0(jiti@2.5.1))(typescript@5.9.2))(eslint@9.35.0(jiti@2.5.1))(typescript@5.9.2)
@@ -6640,18 +6638,18 @@ packages:
         integrity: sha512-/Jm5M4RvtBFVkKWRu2BLUTNP8/M2a+UwuAX+ae4770q1qVGtfjG+WTCupoZixokjmHiry8uI+dlY8KXYV5HVVQ==,
       }
 
-  playwright-core@1.55.0:
+  playwright-core@1.56.1:
     resolution:
       {
-        integrity: sha512-GvZs4vU3U5ro2nZpeiwyb0zuFaqb9sUiAJuyrWpcGouD8y9/HLgGbNRjIph7zU9D3hnPaisMl9zG9CgFi/biIg==,
+        integrity: sha512-hutraynyn31F+Bifme+Ps9Vq59hKuUCz7H1kDOcBs+2oGguKkWTU50bBWrtz34OUWmIwpBTWDxaRPXrIXkgvmQ==,
       }
     engines: { node: '>=18' }
     hasBin: true
 
-  playwright@1.55.0:
+  playwright@1.56.1:
     resolution:
       {
-        integrity: sha512-sdCWStblvV1YU909Xqx0DhOjPZE4/5lJsIS84IfN9dAZfcl/CIZ5O8l3o0j7hPMjDvqoTF8ZUcc+i/GL5erstA==,
+        integrity: sha512-aFi5B0WovBHTEvpM3DzXTUaeN6eN0qWnTkKx4NQaH4Wvcmc153PdaY2UBdSYKaGYw+UyWXSVyxDUg5DoPEttjw==,
       }
     engines: { node: '>=18' }
     hasBin: true
@@ -9001,7 +8999,8 @@ snapshots:
 
   '@playwright/test@1.55.0':
     dependencies:
-      playwright: 1.55.0
+      playwright: 1.56.1
+    optional: true
 
   '@posthog/core@1.2.4': {}
 
@@ -12280,13 +12279,15 @@ snapshots:
       mlly: 1.8.0
       pathe: 2.0.3
 
-  playwright-core@1.55.0: {}
+  playwright-core@1.56.1:
+    optional: true
 
-  playwright@1.55.0:
+  playwright@1.56.1:
     dependencies:
-      playwright-core: 1.55.0
+      playwright-core: 1.56.1
     optionalDependencies:
       fsevents: 2.3.2
+    optional: true
 
   possible-typed-array-names@1.1.0: {}
 
