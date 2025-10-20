@@ -255,6 +255,10 @@ export class FileManager {
 
               const file = await handle.getFile();
               const buffer = await file.arrayBuffer();
+              
+              // Create a copy of the buffer BEFORE extraction to avoid detached buffer issues
+              const originalBuffer = new Uint8Array(buffer);
+              const bufferCopy = originalBuffer.buffer.slice(0);
 
               this.config.onDocumentExtractionProgress?.(
                 Math.min(i + batch.indexOf(path) + 1, documentPaths.length),
@@ -262,12 +266,11 @@ export class FileManager {
                 path
               );
 
-              const extractedText = await DocumentExtractor.extractHtml(path, buffer);
+              const extractedText = await DocumentExtractor.extractHtml(path, bufferCopy);
 
               if (extractedText) {
                 const textEncoder = new TextEncoder();
                 const textBuffer = textEncoder.encode(extractedText);
-                const originalBuffer = new Uint8Array(buffer);
 
                 this.extractedContent.set(path, textBuffer);
                 this.originalDocumentContent.set(path, originalBuffer);
