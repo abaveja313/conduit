@@ -262,6 +262,15 @@ impl Orchestrator {
     }
 
     pub fn handle_replace_lines(&self, req: ReplaceLinesRequest) -> Result<ReplaceLinesResponse> {
+        // Check if file is editable
+        let staged_index = self.index_manager.staged_index()?;
+        let entry = staged_index
+            .get_file(&req.path)
+            .ok_or_else(|| Error::FileNotFound(req.path.as_str().to_string()))?;
+        if !entry.is_editable() {
+            return Err(Error::ReadOnlyFile(req.path.into()));
+        }
+
         let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
         let original_lines = content.lines().count();
 
@@ -302,6 +311,15 @@ impl Orchestrator {
     }
 
     pub fn handle_delete_lines(&self, req: DeleteLinesRequest) -> Result<ReplaceLinesResponse> {
+        // Check if file is editable
+        let staged_index = self.index_manager.staged_index()?;
+        let entry = staged_index
+            .get_file(&req.path)
+            .ok_or_else(|| Error::FileNotFound(req.path.as_str().to_string()))?;
+        if !entry.is_editable() {
+            return Err(Error::ReadOnlyFile(req.path.into()));
+        }
+
         let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
         let original_lines = content.lines().count();
 
@@ -350,6 +368,15 @@ impl Orchestrator {
     }
 
     pub fn handle_insert_lines(&self, req: InsertLinesRequest) -> Result<ReplaceLinesResponse> {
+        // Check if file is editable
+        let staged_index = self.index_manager.staged_index()?;
+        let entry = staged_index
+            .get_file(&req.path)
+            .ok_or_else(|| Error::FileNotFound(req.path.as_str().to_string()))?;
+        if !entry.is_editable() {
+            return Err(Error::ReadOnlyFile(req.path.into()));
+        }
+
         // Insert operations always work on staged files
         let content = self.get_file_content(&req.path, SearchSpace::Staged)?;
         let original_lines = content.lines().count();
