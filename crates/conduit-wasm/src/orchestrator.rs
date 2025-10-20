@@ -188,7 +188,27 @@ impl Orchestrator {
 
     pub fn handle_copy_file(&self, req: MoveFileRequest) -> Result<MoveFileResponse> {
         let src_content = self.get_file_content(&req.src, SearchSpace::Staged)?;
+        let line_count = src_content.lines().count();
+
         self.stage_file_with_content(&req.dst, src_content)?;
+
+        // Track line stats for the copied file
+        // Check if destination already exists to calculate proper delta
+        if let Ok(active_content) = self.get_file_content(&req.dst, SearchSpace::Active) {
+            // File exists in active index - calculate delta
+            let original_lines = active_content.lines().count();
+            self.index_manager.update_line_stats(
+                &req.dst,
+                line_count as isize,
+                original_lines as isize,
+                line_count,
+            )?;
+        } else {
+            // New file - all lines are added
+            self.index_manager
+                .update_line_stats(&req.dst, line_count as isize, 0, line_count)?;
+        }
+
         Ok(MoveFileResponse { dst: req.dst })
     }
 
