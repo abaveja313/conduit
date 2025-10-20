@@ -560,25 +560,22 @@ export class FileService {
                 deleted: string[];
             };
 
-            if (result.modified.length > 0) {
-                const writtenCount = await this.fileManager.writeModifiedFiles(result.modified);
+            const hasModifications = result.modified.length > 0;
+            const hasDeletions = result.deleted.length > 0;
+
+            const operations = await Promise.all([
+                hasModifications ? this.fileManager.writeModifiedFiles(result.modified) : Promise.resolve(0),
+                hasDeletions ? this.processDeletions(result.deleted) : Promise.resolve({ succeeded: 0, failed: 0 })
+            ]);
+
+            const [writtenCount, deletionStats] = operations;
+
+            if (hasModifications) {
                 logger.info(`Wrote ${writtenCount} files to disk`);
             }
 
-            if (result.deleted.length > 0) {
-                for (const path of result.deleted) {
-                    const metadata = this.fileManager.getMetadata(path);
-                    if (metadata?.handle) {
-                        try {
-                            await this.fileManager.removeFile(path);
-                            logger.debug(`Deleted file from disk: ${path}`);
-                        } catch (error) {
-                            logger.debug(`Failed to delete file (may have been moved): ${path}`, error);
-                        }
-                    } else {
-                        logger.debug(`Skipped deletion (never existed on disk): ${path}`);
-                    }
-                }
+            if (deletionStats.succeeded > 0 || deletionStats.failed > 0) {
+                logger.debug(`Deletions: ${deletionStats.succeeded} succeeded, ${deletionStats.failed} failed`);
             }
 
             return {
@@ -594,6 +591,52 @@ export class FileService {
                 operation: 'commit_changes'
             });
         }
+    }
+
+    private async processDeletions(paths: string[]): Promise<{ succeeded: number; failed: number }> {
+        if (paths.length === 0) {
+            return { succeeded: 0, failed: 0 };
+        }
+
+        const deletionsToProcess = [];
+        let skippedCount = 0;
+
+        for (const path of paths) {
+            const metadata = this.fileManager.getMetadata(path);
+            if (metadata?.handle) {
+                deletionsToProcess.push(path);
+            } else {
+                skippedCount++;
+            }
+        }
+
+        if (skippedCount > 0) {
+            logger.debug(`Skipped ${skippedCount} deletions (never existed on disk)`);
+        }
+
+        if (deletionsToProcess.length === 0) {
+            return { succeeded: 0, failed: 0 };
+        }
+
+        const deletionPromises = deletionsToProcess.map(async (path) => {
+            try {
+                await this.fileManager.removeFile(path);
+                return { success: true };
+            } catch {
+                return { success: false };
+            }
+        });
+
+        const deletionResults = await Promise.all(deletionPromises);
+
+        let succeeded = 0;
+        let failed = 0;
+        for (const result of deletionResults) {
+            if (result.success) succeeded++;
+            else failed++;
+        }
+
+        return { succeeded, failed };
     }
 
     /**
