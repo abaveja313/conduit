@@ -21,5 +21,5 @@ path-slash = "0.2.1"
 regex = "1.12.2"
 thiserror = "2.0.17"
 serde = { version = "1", features = ["derive", "rc"] }
-grep-matcher = "0.1.7"
+grep-matcher = "0.1.8"
 similar = { version = "2.4", features = ["inline", "text"] }
