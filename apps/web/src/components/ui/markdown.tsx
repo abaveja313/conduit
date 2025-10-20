@@ -22,15 +22,15 @@ export function Markdown({ content, className = '' }: MarkdownProps) {
                 );
             }
 
-            // Handle inline code, bold, and italics
+            // Handle inline code and bold
             return parseInlineFormatting(part, index);
         });
     };
 
     const parseInlineFormatting = (text: string, keyPrefix: number) => {
-        // Pattern to match inline code, bold, and italic markers
-        // Order matters: check for triple asterisks first, then double, then single
-        const pattern = /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*|___[^_]+_____|__[^_]+__|_[^_]+_)/g;
+        // Pattern to match inline code and bold markers
+        // Order matters: check for triple asterisks first, then double
+        const pattern = /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|___[^_]+_____|__[^_]+__)/g;
 
         const parts = text.split(pattern);
 
@@ -48,12 +48,12 @@ export function Markdown({ content, className = '' }: MarkdownProps) {
                         );
                     }
 
-                    // Bold and italic (*** or ___)
+                    // Bold (*** or ___)
                     if ((part.startsWith('***') && part.endsWith('***')) ||
                         (part.startsWith('___') && part.endsWith('___'))) {
                         const content = part.startsWith('***') ? part.slice(3, -3) : part.slice(3, -3);
                         return (
-                            <strong key={`${keyPrefix}-${i}`} className="font-bold italic">
+                            <strong key={`${keyPrefix}-${i}`} className="font-bold">
                                 {content}
                             </strong>
                         );
@@ -70,16 +70,6 @@ export function Markdown({ content, className = '' }: MarkdownProps) {
                         );
                     }
 
-                    // Italic (* or _)
-                    if ((part.startsWith('*') && part.endsWith('*') && part.length > 1) ||
-                        (part.startsWith('_') && part.endsWith('_') && part.length > 1)) {
-                        const content = part.slice(1, -1);
-                        return (
-                            <em key={`${keyPrefix}-${i}`} className="italic">
-                                {content}
-                            </em>
-                        );
-                    }
 
                     return <span key={`${keyPrefix}-${i}`}>{part}</span>;
                 })}
