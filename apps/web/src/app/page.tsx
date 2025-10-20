@@ -5,7 +5,6 @@ import { AnimatePresence } from "framer-motion"
 import { Train, RefreshCw, ChevronRight, Send, Settings, CheckCircle2, FileText, Files, File, Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createLogger } from "@conduit/shared"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { SetupModal } from "@/components/SetupModal"
 import { ModelSwitcher } from "@/components/ModelSwitcher"
@@ -282,6 +281,7 @@ export default function Home() {
   })
   const [viewMode, setViewMode] = useState<Map<string, 'diff' | 'full'>>(new Map())
   const [fullFileContent, setFullFileContent] = useState<Map<string, React.ReactElement | null>>(new Map())
+  const [isInputFocused, setIsInputFocused] = useState(false)
   const latencies = useRef<number[]>([])
 
   const { fileChanges, expanded, updateFileChanges, toggleExpanded, setFileChanges, clearExpanded } = useFileChanges(fileService)
@@ -806,6 +806,13 @@ export default function Home() {
 
       setFileChanges([])
 
+      // Reset system stats for staged files
+      setSystemStats(prev => ({
+        ...prev,
+        stagedFiles: 0,
+        stagedDeletions: 0
+      }))
+
       await loadFiles(fileService, 0)
 
       setTimeout(() => {
@@ -829,6 +836,13 @@ export default function Home() {
       await fileService.revertChanges()
       setFileChanges([])
       logger.info('Reverted all staged changes')
+
+      // Reset system stats for staged files
+      setSystemStats(prev => ({
+        ...prev,
+        stagedFiles: 0,
+        stagedDeletions: 0
+      }))
 
       await loadFiles(fileService, 0)
     } catch (error) {
@@ -948,15 +962,26 @@ export default function Home() {
                     </div>
                     <form onSubmit={handleSubmit}>
                       <div className="relative">
-                        <Input
-                          type="text"
+                        <Textarea
                           placeholder="Ask me to read, create, or modify files..."
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
+                          onFocus={() => setIsInputFocused(true)}
+                          onBlur={() => setIsInputFocused(false)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault()
+                              const form = e.currentTarget.closest('form')
+                              if (form) {
+                                form.requestSubmit()
+                              }
+                            }
+                          }}
                           disabled={isLoading}
-                          className="pr-24 h-12 text-base"
+                          className="pr-24 min-h-[80px] max-h-[200px] text-base resize-none overflow-y-auto"
+                          autoResize
                         />
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                        <div className="absolute right-2 bottom-2 flex items-center gap-2">
                           <ModelSwitcher
                             currentModel={currentModel}
                             onModelChange={handleModelChange}
@@ -969,6 +994,12 @@ export default function Home() {
                           >
                             <Send className="h-4 w-4" />
                           </Button>
+                        </div>
+                        <div
+                          className={`absolute left-0 -bottom-6 text-xs text-muted-foreground transition-opacity duration-200 ${isInputFocused ? 'opacity-100' : 'opacity-0'
+                            }`}
+                        >
+                          Enter to send, Shift+Enter for new line
                         </div>
                       </div>
                     </form>
@@ -1018,7 +1049,7 @@ export default function Home() {
                   <form onSubmit={handleSubmit} className="p-4 border-t border-border">
                     <div className="relative">
                       <Textarea
-                        placeholder="Continue the conversation... (Enter to send, Shift+Enter for new line)"
+                        placeholder="Continue the conversation..."
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => {
