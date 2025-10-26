@@ -482,7 +482,6 @@ export default function Home() {
               }
               setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }])
               await updateFileChanges()
-              clearExpanded() // Close previews on tool call
             }
             break
 
