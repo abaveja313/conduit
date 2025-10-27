@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { AnimatePresence } from "framer-motion"
 import {
-  Train, RefreshCw, ChevronRight, Send, Settings,
+  Train, RefreshCw, ChevronRight, Send,
   FileText, Files, File, Github
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -221,7 +221,6 @@ const logger = createLogger('web:page')
 
 export default function Home() {
   const [isSetupComplete, setIsSetupComplete] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
     const hasApiKey = localStorage.getItem('anthropicApiKey')
@@ -229,7 +228,6 @@ export default function Home() {
 
     logger.debug('Home page state:', {
       isSetupComplete,
-      showSettings,
       hasStoredApiKey: !!hasApiKey,
       savedModel
     })
@@ -241,7 +239,7 @@ export default function Home() {
     if (hasApiKey && !isSetupComplete) {
       logger.debug('Found stored API key but setup not complete - modal should be showing')
     }
-  }, [isSetupComplete, showSettings])
+  }, [isSetupComplete])
   const [isStagingCollapsed, setIsStagingCollapsed] = useState(false)
   const [currentModel, setCurrentModel] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -287,7 +285,7 @@ export default function Home() {
   const [fullFileContent, setFullFileContent] = useState<Map<string, React.ReactElement | null>>(new Map())
   const [isInputFocused, setIsInputFocused] = useState(false)
 
-  const { fileChanges, expanded, updateFileChanges, toggleExpanded, setFileChanges, clearExpanded } = useFileChanges(fileService)
+  const { fileChanges, expanded, updateFileChanges, toggleExpanded, setFileChanges } = useFileChanges(fileService)
 
   useEffect(() => {
     const initWasm = async () => {
@@ -550,10 +548,7 @@ export default function Home() {
   }
 
   const handleRestart = () => {
-    setMessages([])
-    setFileChanges([])
-    clearExpanded()
-    setExpandedToolCalls(new Set())
+    window.location.reload()
   }
 
 
@@ -900,27 +895,16 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-2">
           {isSetupComplete && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowSettings(true)}
-                className="gap-2"
-              >
-                <Settings className="h-4 w-4" />
-                Settings
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRestart}
-                disabled={messages.length === 0}
-                className="gap-2"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Restart
-              </Button>
-            </>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRestart}
+              disabled={messages.length === 0}
+              className="gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Restart
+            </Button>
           )}
           <Button
             variant="ghost"
@@ -954,16 +938,6 @@ export default function Home() {
         <SetupModal open={true} onComplete={handleSetupComplete} />
       ) : (
         <div className="flex flex-1 overflow-hidden pb-9">
-          {/* Settings Modal */}
-          <SetupModal
-            open={showSettings}
-            onComplete={(config) => {
-              handleSetupComplete(config)
-              setShowSettings(false)
-            }}
-            initialModel={currentModel}
-          />
-
           <div
             className="flex flex-col h-full overflow-hidden"
             style={{ width: messages.length > 0 && !isStagingCollapsed ? `${dividerPosition}%` : '100%' }}
