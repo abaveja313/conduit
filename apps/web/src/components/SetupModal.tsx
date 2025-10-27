@@ -441,10 +441,9 @@ export function SetupModal({ open, onComplete, initialModel }: SetupModalProps) 
                                                         <p className="text-sm text-destructive-foreground/80">
                                                             Your browser doesn&apos;t support the File System Access API.
                                                             Please use Chrome, Microsoft Edge, or another Chromium-based browser on your computer.<br>
-                                                            ... or you can checkout the demo <a href='https://www.youtube.com/watch?v=6DjfNPTCQi8'>here</a>.
                                                         </p>
                                                         <p className="text-xs text-destructive-foreground/60">
-                                                            Firefox and Safari are not currently supported.
+                                                            ... or you can checkout the demo <a href='https://www.youtube.com/watch?v=6DjfNPTCQi8'>here</a>.
                                                         </p>
                                                     </div>
                                                 </div>
