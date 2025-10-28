@@ -52,7 +52,6 @@ interface ToolCall {
   toolName: string
   args: Record<string, unknown>
   result?: unknown
-  error?: string
   startTime?: number
   endTime?: number
   duration?: number
@@ -114,9 +113,8 @@ function MessageContentRenderer({
                       {formatDuration(toolCall.duration)}
                     </span>
                   )}
-                  {isComplete && !toolCall.error && <span className="text-xs text-green-500">✓</span>}
-                  {toolCall.error && <span className="text-xs text-red-500">✗</span>}
-                  {!isComplete && toolCall.result === undefined && !toolCall.error && (
+                  {isComplete && <span className="text-xs text-green-500">✓</span>}
+                  {!isComplete && toolCall.result === undefined && (
                     <span className="text-xs text-yellow-500">⋯</span>
                   )}
                 </div>
@@ -130,14 +128,6 @@ function MessageContentRenderer({
                       <pre className="overflow-x-auto bg-background/50 p-2 rounded">
                         {JSON.stringify(toolCall.args, null, 2)}
                       </pre>
-                    </div>
-                  )}
-                  {toolCall.error && (
-                    <div className="space-y-1">
-                      <div className="font-medium text-red-500">Error:</div>
-                      <div className="bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 p-2 rounded">
-                        {toolCall.error}
-                      </div>
                     </div>
                   )}
                   {toolCall.result !== undefined && (
@@ -477,7 +467,7 @@ export default function Home() {
             if (event.toolCall) {
               // Find the first incomplete tool call with matching name
               const toolIndex = assistantMessage.toolCalls?.findIndex(
-                tc => tc.toolName === event.toolCall!.toolName && tc.result === undefined && tc.error === undefined
+                tc => tc.toolName === event.toolCall!.toolName && tc.result === undefined
               )
               if (toolIndex !== undefined && toolIndex >= 0 && assistantMessage.toolCalls) {
                 const endTime = Date.now()
@@ -509,16 +499,14 @@ export default function Home() {
               assistantMessage.content += errorMessage + suggestionMessage
               setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }])
 
-              // Track API error - use original error if available for stack trace
-              const streamError = event.errorObject instanceof Error
-                ? event.errorObject
-                : new Error(event.error)
+              // Track API error - create Error object for stack trace
+              const streamError = new Error(event.error)
               trackApiError({
                 provider: 'anthropic',
                 errorCode: 'stream_error',
                 errorMessage: event.error,
                 model: currentModel,
-                error: event.errorObject || streamError
+                error: streamError
               })
             }
             break
@@ -546,7 +534,7 @@ export default function Home() {
         // Check for incomplete tool calls
         const incompleteToolCalls = assistantMessage.toolCalls?.filter((tc, idx) => {
           const marker = `[TOOL_CALL:${idx}:COMPLETE]`
-          return !assistantMessage.content.includes(marker) && tc.result === undefined && tc.error === undefined
+          return !assistantMessage.content.includes(marker) && tc.result === undefined
         })
 
         if (incompleteToolCalls && incompleteToolCalls.length > 0) {
