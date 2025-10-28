@@ -518,15 +518,38 @@ export function SetupModal({ open, onComplete, initialModel }: SetupModalProps) 
                                 {step === "directory" && (
                                     <div className="flex flex-col h-full space-y-8">
                                         <div className="max-w-md mx-auto w-full">
-                                            <Button
-                                                variant="outline"
-                                                onClick={handleDirectoryPicker}
-                                                disabled={isScanning || !browserSupported}
-                                                className="w-full px-6 py-4"
+                                            <motion.div
+                                                animate={!directory && !isScanning ? "pulse" : "idle"}
+                                                variants={{
+                                                    pulse: {
+                                                        boxShadow: [
+                                                            "0 0 0 0 rgba(255, 255, 255, 0)",
+                                                            "0 0 0 2px rgba(255, 255, 255, 0.8)",
+                                                            "0 0 0 0 rgba(255, 255, 255, 0)"
+                                                        ]
+                                                    },
+                                                    idle: {
+                                                        boxShadow: "0 0 0 0 rgba(255, 255, 255, 0)"
+                                                    }
+                                                }}
+                                                transition={{
+                                                    delay: 3,
+                                                    duration: 2,
+                                                    repeat: Infinity,
+                                                    ease: "easeInOut"
+                                                }}
+                                                className="rounded-lg"
                                             >
-                                                <Folder className="h-4 w-4 mr-2" />
-                                                {directory ? directory.name : "Select Directory"}
-                                            </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={handleDirectoryPicker}
+                                                    disabled={isScanning || !browserSupported}
+                                                    className="w-full px-6 py-4"
+                                                >
+                                                    <Folder className="h-4 w-4 mr-2" />
+                                                    {directory ? directory.name : "Select Directory"}
+                                                </Button>
+                                            </motion.div>
                                         </div>
 
                                         <div className="space-y-3 max-w-md mx-auto w-full">
