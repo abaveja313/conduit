@@ -70,6 +70,7 @@ export interface ApiErrorEvent {
     errorCode: string;
     errorMessage: string;
     model: string;
+    error?: Error | unknown;
 }
 
 export interface RateLimitHitEvent {
@@ -188,7 +189,22 @@ export const trackApiError = (event: ApiErrorEvent) => {
     const ph = ensurePostHog();
     if (!ph) return;
 
-    ph.capture('api_error', event);
+    // If we have an actual Error object, use captureException for proper stack traces
+    if (event.error) {
+        const errorObj = event.error instanceof Error ? event.error : new Error(event.errorMessage);
+
+        ph.captureException(errorObj, {
+            source: 'api_error',
+            provider: event.provider,
+            errorCode: event.errorCode,
+            model: event.model,
+            timestamp: new Date().toISOString(),
+            pathname: window.location.pathname,
+        });
+    } else {
+        // Fallback to regular capture if no Error object
+        ph.capture('api_error', event);
+    }
 
     // API errors will be tracked through event aggregation
 };
