@@ -18,8 +18,8 @@ importers:
         specifier: ^1.1.15
         version: 1.1.15(@types/react-dom@19.1.9(@types/react@19.1.12))(@types/react@19.1.12)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       posthog-js:
-        specifier: ^1.275.0
-        version: 1.275.0
+        specifier: ^1.281.0
+        version: 1.281.0
       posthog-node:
         specifier: ^5.9.5
         version: 5.9.5
@@ -1145,6 +1145,9 @@ packages:
 
   '@posthog/core@1.2.4':
     resolution: {integrity: sha512-o2TkycuV98PtAkcqE8B1DJv5LBvHEDTWirK5TlkQMeF2MJg0BYliY95CeRZFILNgZJCbI3k/fhahSMRQlpXOMg==}
+
+  '@posthog/core@1.4.0':
+    resolution: {integrity: sha512-jmW8/I//YOHAfjzokqas+Qtc2T57Ux8d2uIJu7FLcMGxywckHsl6od59CD18jtUzKToQdjQhV6Y3429qj+KeNw==}
 
   '@radix-ui/number@1.1.1':
     resolution: {integrity: sha512-MkKCwxlXTgz6CFoJx3pCwn07GKp36+aZyu/u2Ln2VrA5DcdyCZkASEDBTd8x5whTQQL5CiYf4prXKLcgQdv29g==}
@@ -4293,16 +4296,8 @@ packages:
     resolution: {integrity: sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg==}
     engines: {node: ^10 || ^12 || >=14}
 
-  posthog-js@1.275.0:
-    resolution: {integrity: sha512-pobnKPqsJoCpv9FnjJZ54QwRBMWqrp5BjXF5TXsh2H81RaRh9Fkaj43BkUIbYzFsVahb8ZHPYv/AywlnJlzR2A==}
-    peerDependencies:
-      '@rrweb/types': 2.0.0-alpha.17
-      rrweb-snapshot: 2.0.0-alpha.17
-    peerDependenciesMeta:
-      '@rrweb/types':
-        optional: true
-      rrweb-snapshot:
-        optional: true
+  posthog-js@1.281.0:
+    resolution: {integrity: sha512-t3sAlgVozpU1W1ppiF5zLG6eBRPUs0hmtxN8R1V7P0qZFmnECshAAk2cBxCsxEanadT3iUpS8Z7crBytATqWQQ==}
 
   posthog-node@5.9.5:
     resolution: {integrity: sha512-Rv82jMVhnxlBNf8wDbP+iAJdZrhU0aHul0LaFrQ/JGxxDiK3EkclIqr+QUwA9CulleTtXf6AIFz22tLvbVs/HA==}
@@ -6137,6 +6132,8 @@ snapshots:
     optional: true
 
   '@posthog/core@1.2.4': {}
+
+  '@posthog/core@1.4.0': {}
 
   '@radix-ui/number@1.1.1': {}
 
@@ -9557,9 +9554,9 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  posthog-js@1.275.0:
+  posthog-js@1.281.0:
     dependencies:
-      '@posthog/core': 1.2.4
+      '@posthog/core': 1.4.0
       core-js: 3.46.0
       fflate: 0.4.8
       preact: 10.27.2
