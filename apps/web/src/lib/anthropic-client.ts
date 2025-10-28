@@ -174,7 +174,8 @@ function createTools(fileService: FileService): Record<string, any> {
             errorType: error instanceof Error ? error.message : 'Unknown error',
           });
 
-          throw error;
+          // Return error as a structured object that the SDK can handle
+          return { error: error instanceof Error ? error.message : String(error) };
         }
       }
     });
