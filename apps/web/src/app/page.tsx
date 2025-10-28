@@ -52,6 +52,7 @@ interface ToolCall {
   toolName: string
   args: Record<string, unknown>
   result?: unknown
+  error?: string
   startTime?: number
   endTime?: number
   duration?: number
@@ -113,8 +114,9 @@ function MessageContentRenderer({
                       {formatDuration(toolCall.duration)}
                     </span>
                   )}
-                  {isComplete && <span className="text-xs text-green-500">✓</span>}
-                  {!isComplete && toolCall.result === undefined && (
+                  {isComplete && !toolCall.error && <span className="text-xs text-green-500">✓</span>}
+                  {toolCall.error && <span className="text-xs text-red-500">✗</span>}
+                  {!isComplete && toolCall.result === undefined && !toolCall.error && (
                     <span className="text-xs text-yellow-500">⋯</span>
                   )}
                 </div>
@@ -128,6 +130,14 @@ function MessageContentRenderer({
                       <pre className="overflow-x-auto bg-background/50 p-2 rounded">
                         {JSON.stringify(toolCall.args, null, 2)}
                       </pre>
+                    </div>
+                  )}
+                  {toolCall.error && (
+                    <div className="space-y-1">
+                      <div className="font-medium text-red-500">Error:</div>
+                      <div className="bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 p-2 rounded">
+                        {toolCall.error}
+                      </div>
                     </div>
                   )}
                   {toolCall.result !== undefined && (
@@ -437,11 +447,7 @@ export default function Home() {
         fileService
       )
 
-      let eventCount = 0;
       for await (const event of stream) {
-        eventCount++;
-        logger.debug(`Stream event ${eventCount}:`, { type: event.type });
-
         switch (event.type) {
           case 'text':
             if (event.content) {
@@ -467,17 +473,39 @@ export default function Home() {
             if (event.toolCall) {
               // Find the first incomplete tool call with matching name
               const toolIndex = assistantMessage.toolCalls?.findIndex(
-                tc => tc.toolName === event.toolCall!.toolName && tc.result === undefined
+                tc => tc.toolName === event.toolCall!.toolName && tc.result === undefined && tc.error === undefined
               )
               if (toolIndex !== undefined && toolIndex >= 0 && assistantMessage.toolCalls) {
                 const endTime = Date.now()
                 const startTime = assistantMessage.toolCalls[toolIndex].startTime
                 const duration = startTime ? endTime - startTime : undefined
-                assistantMessage.toolCalls[toolIndex] = {
-                  ...event.toolCall,
-                  startTime,
-                  endTime,
-                  duration
+
+                const isError = event.toolCall.result &&
+                  typeof event.toolCall.result === 'object' &&
+                  event.toolCall.result !== null &&
+                  'error' in event.toolCall.result;
+
+                if (isError) {
+                  const errorResult = event.toolCall.result as { error: string };
+                  logger.debug('Tool error detected:', {
+                    toolName: event.toolCall.toolName,
+                    error: errorResult.error
+                  });
+                  assistantMessage.toolCalls[toolIndex] = {
+                    ...event.toolCall,
+                    result: undefined,
+                    error: errorResult.error || 'Tool execution failed',
+                    startTime,
+                    endTime,
+                    duration
+                  }
+                } else {
+                  assistantMessage.toolCalls[toolIndex] = {
+                    ...event.toolCall,
+                    startTime,
+                    endTime,
+                    duration
+                  }
                 }
                 const marker = `[TOOL_CALL:${toolIndex}]`
                 const completeMarker = `[TOOL_CALL:${toolIndex}:COMPLETE]`
@@ -527,24 +555,8 @@ export default function Home() {
         }
       }
 
-      logger.info(`Stream ended after ${eventCount} events`);
-
-      // Check if stream ended without a proper completion
-      if (assistantMessage && !assistantMessage.content.includes('Error:')) {
-        // Check for incomplete tool calls
-        const incompleteToolCalls = assistantMessage.toolCalls?.filter((tc, idx) => {
-          const marker = `[TOOL_CALL:${idx}:COMPLETE]`
-          return !assistantMessage.content.includes(marker) && tc.result === undefined
-        })
-
-        if (incompleteToolCalls && incompleteToolCalls.length > 0) {
-          logger.warn(`Stream ended with ${incompleteToolCalls.length} incomplete tool calls`);
-
-          const errorMessage = '\n\n**Note:** The operation was interrupted. Some tool calls did not complete. This might be due to hitting processing limits. Try breaking down your request into smaller parts.'
-          assistantMessage.content += errorMessage
-          setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }])
-        }
-      }
+      // Only check for incomplete tool calls if we didn't receive a 'done' event
+      // (The done event is sent by our stream handler when everything completes normally)
     } catch (error) {
       logger.error('Chat error:', error)
 
