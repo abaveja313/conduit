@@ -52,6 +52,7 @@ interface ToolCall {
   toolName: string
   args: Record<string, unknown>
   result?: unknown
+  error?: string
   startTime?: number
   endTime?: number
   duration?: number
@@ -113,8 +114,9 @@ function MessageContentRenderer({
                       {formatDuration(toolCall.duration)}
                     </span>
                   )}
-                  {isComplete && <span className="text-xs text-green-500">✓</span>}
-                  {!isComplete && toolCall.result === undefined && (
+                  {isComplete && !toolCall.error && <span className="text-xs text-green-500">✓</span>}
+                  {toolCall.error && <span className="text-xs text-red-500">✗</span>}
+                  {!isComplete && toolCall.result === undefined && !toolCall.error && (
                     <span className="text-xs text-yellow-500">⋯</span>
                   )}
                 </div>
@@ -128,6 +130,14 @@ function MessageContentRenderer({
                       <pre className="overflow-x-auto bg-background/50 p-2 rounded">
                         {JSON.stringify(toolCall.args, null, 2)}
                       </pre>
+                    </div>
+                  )}
+                  {toolCall.error && (
+                    <div className="space-y-1">
+                      <div className="font-medium text-red-500">Error:</div>
+                      <div className="bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 p-2 rounded">
+                        {toolCall.error}
+                      </div>
                     </div>
                   )}
                   {toolCall.result !== undefined && (
@@ -437,7 +447,11 @@ export default function Home() {
         fileService
       )
 
+      let eventCount = 0;
       for await (const event of stream) {
+        eventCount++;
+        logger.debug(`Stream event ${eventCount}:`, { type: event.type });
+
         switch (event.type) {
           case 'text':
             if (event.content) {
@@ -461,8 +475,9 @@ export default function Home() {
 
           case 'tool-result':
             if (event.toolCall) {
+              // Find the first incomplete tool call with matching name
               const toolIndex = assistantMessage.toolCalls?.findIndex(
-                tc => tc.toolName === event.toolCall?.toolName && JSON.stringify(tc.args) === JSON.stringify(event.toolCall?.args)
+                tc => tc.toolName === event.toolCall!.toolName && tc.result === undefined && tc.error === undefined
               )
               if (toolIndex !== undefined && toolIndex >= 0 && assistantMessage.toolCalls) {
                 const endTime = Date.now()
@@ -485,15 +500,25 @@ export default function Home() {
 
           case 'error':
             if (event.error) {
-              assistantMessage.content += `\n\nError: ${event.error}`
+              const isOverloadedError = event.error.toLowerCase().includes('overloaded')
+              const errorMessage = `\n\n**Error:** ${event.error}`
+              const suggestionMessage = isOverloadedError || event.error.toLowerCase().includes('rate') || event.error.toLowerCase().includes('limit')
+                ? '\n\n**Suggestion:** Try typing "continue" to resume, or rephrase your request and try again.'
+                : '\n\n**Suggestion:** Please try rephrasing your request or breaking it into smaller parts.'
+
+              assistantMessage.content += errorMessage + suggestionMessage
               setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }])
 
-              // Track API error
+              // Track API error - use original error if available for stack trace
+              const streamError = event.errorObject instanceof Error
+                ? event.errorObject
+                : new Error(event.error)
               trackApiError({
                 provider: 'anthropic',
                 errorCode: 'stream_error',
                 errorMessage: event.error,
-                model: currentModel
+                model: currentModel,
+                error: event.errorObject || streamError
               })
             }
             break
@@ -511,6 +536,25 @@ export default function Home() {
             })
             break
           }
+        }
+      }
+
+      logger.info(`Stream ended after ${eventCount} events`);
+
+      // Check if stream ended without a proper completion
+      if (assistantMessage && !assistantMessage.content.includes('Error:')) {
+        // Check for incomplete tool calls
+        const incompleteToolCalls = assistantMessage.toolCalls?.filter((tc, idx) => {
+          const marker = `[TOOL_CALL:${idx}:COMPLETE]`
+          return !assistantMessage.content.includes(marker) && tc.result === undefined && tc.error === undefined
+        })
+
+        if (incompleteToolCalls && incompleteToolCalls.length > 0) {
+          logger.warn(`Stream ended with ${incompleteToolCalls.length} incomplete tool calls`);
+
+          const errorMessage = '\n\n**Note:** The operation was interrupted. Some tool calls did not complete. This might be due to hitting processing limits. Try breaking down your request into smaller parts.'
+          assistantMessage.content += errorMessage
+          setMessages(prev => [...prev.slice(0, -1), { ...assistantMessage }])
         }
       }
     } catch (error) {
@@ -533,7 +577,8 @@ export default function Home() {
           provider: 'anthropic',
           errorCode: error.name || 'unknown',
           errorMessage: error.message,
-          model: currentModel
+          model: currentModel,
+          error: error
         })
       }
 

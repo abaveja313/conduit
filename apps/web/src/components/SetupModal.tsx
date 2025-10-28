@@ -524,7 +524,9 @@ export function SetupModal({ open, onComplete, initialModel }: SetupModalProps) 
                                                     pulse: {
                                                         boxShadow: [
                                                             "0 0 0 0 rgba(255, 255, 255, 0)",
+                                                            "0 0 0 1px rgba(255, 255, 255, 0.3)",
                                                             "0 0 0 2px rgba(255, 255, 255, 0.8)",
+                                                            "0 0 0 1px rgba(255, 255, 255, 0.3)",
                                                             "0 0 0 0 rgba(255, 255, 255, 0)"
                                                         ]
                                                     },
@@ -534,7 +536,7 @@ export function SetupModal({ open, onComplete, initialModel }: SetupModalProps) 
                                                 }}
                                                 transition={{
                                                     delay: 3,
-                                                    duration: 2,
+                                                    duration: 3,
                                                     repeat: Infinity,
                                                     ease: "easeInOut"
                                                 }}

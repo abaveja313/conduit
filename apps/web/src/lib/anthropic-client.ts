@@ -36,6 +36,7 @@ Critical concepts:
 - deleteFile does NOT delete from disk - it only stages the deletion
 
 Important notes:
+- For large file ops, no need to list every single file in your output.
 - All operations happen locally in browser WebAssembly
 - Files must be loaded into WASM before you can access them
 - When listing files, ALWAYS use limit=250 or less to avoid overwhelming results
