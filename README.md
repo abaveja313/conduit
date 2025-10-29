@@ -6,6 +6,8 @@
 
 Conduit is an in-browser **AI-powered file system tool**. AI agents can operate on your local file system directly in the browser with no native app and no per-file uploads. Conduit combines the **File System Access API**, **direct type-safe tools**, and a **Rust → WASM** core for high-performance file operations. While currently only compatible with Chromium-based browsers, Conduit provides a powerful foundation for AI-assisted file system operations with plans to expand browser support as standards evolve.
 
+<a href="https://www.producthunt.com/products/conduit-7?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-conduit&#0045;8" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1031621&theme=dark&t=1761704030813" alt="Conduit - Organize&#0032;&#0038;&#0032;edit&#0032;local&#0032;files&#0032;with&#0032;AI&#0032;from&#0032;your&#0032;browser | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+
 ## Quick Start
 
 Try Conduit in your browser: [https://conduit.amrit.sh](https://conduit.amrit.sh)
