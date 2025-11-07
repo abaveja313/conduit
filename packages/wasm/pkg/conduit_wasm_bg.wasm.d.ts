@@ -44,11 +44,11 @@ export const load_file_batch_with_text: (a: number, b: number, c: number, d: num
 export const commit_file_load: () => [number, number, number];
 export const search_files: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => [number, number, number];
 export const list_files_from_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number];
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;
 export const __wbindgen_exn_store: (a: number) => void;
 export const __externref_table_alloc: () => number;
-export const __wbindgen_export_3: WebAssembly.Table;
-export const __wbindgen_malloc: (a: number, b: number) => number;
-export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_externrefs: WebAssembly.Table;
 export const __externref_table_dealloc: (a: number) => void;
 export const __wbindgen_start: () => void;
